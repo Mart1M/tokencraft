@@ -1,0 +1,26 @@
+{
+  "name": "tokencraft-neo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Git-native design token management SaaS scaffold",
+  "packageManager": "pnpm@9.15.4",
+  "engines": {
+    "node": ">=20.9.0",
+    "pnpm": ">=9"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @tokencraft/web dev",
+    "dev:landing": "pnpm --filter @tokencraft/landing dev",
+    "build": "pnpm --filter @tokencraft/web build",
+    "build:landing": "pnpm --filter @tokencraft/landing build",
+    "lint": "pnpm --filter @tokencraft/web lint",
+    "test": "pnpm --filter @tokencraft/web test",
+    "typecheck": "pnpm -r typecheck",
+    "db:generate": "pnpm --filter @tokencraft/web db:generate",
+    "db:migrate": "pnpm --filter @tokencraft/web db:migrate",
+    "db:studio": "pnpm --filter @tokencraft/web db:studio"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}

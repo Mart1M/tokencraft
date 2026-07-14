@@ -1,0 +1,212 @@
+{
+  "$schema": "https://design-tokens.github.io/community-group/format/",
+  "color": {
+    "core": {
+      "blue": {
+        "500": {
+          "$type": "color",
+          "$value": "#0066FF"
+        }
+      },
+      "gray": {
+        "50": {
+          "$type": "color",
+          "$value": "#F8FAFC"
+        },
+        "900": {
+          "$type": "color",
+          "$value": "#0F172A"
+        }
+      }
+    },
+    "semantic": {
+      "background": {
+        "default": {
+          "$type": "color",
+          "$value": {
+            "light": "{color.core.gray.50}",
+            "dark": "{color.core.gray.900}"
+          }
+        }
+      },
+      "text": {
+        "default": {
+          "$type": "color",
+          "$value": {
+            "light": "{color.core.gray.900}",
+            "dark": "{color.core.gray.50}"
+          }
+        }
+      }
+    }
+  },
+  "dimension": {
+    "spacing": {
+      "4": {
+        "$type": "dimension",
+        "$value": "4px"
+      },
+      "8": {
+        "$type": "dimension",
+        "$value": "8px"
+      }
+    },
+    "radius": {
+      "md": {
+        "$type": "dimension",
+        "$value": {
+          "default": "8px",
+          "compact": "6px"
+        }
+      }
+    }
+  },
+  "fontFamily": {
+    "sans": {
+      "$type": "fontFamily",
+      "$value": ["Inter", "Arial", "sans-serif"]
+    }
+  },
+  "fontWeight": {
+    "regular": {
+      "$type": "fontWeight",
+      "$value": 400
+    },
+    "bold": {
+      "$type": "fontWeight",
+      "$value": 700
+    }
+  },
+  "duration": {
+    "fast": {
+      "$type": "duration",
+      "$value": "150ms"
+    },
+    "normal": {
+      "$type": "duration",
+      "$value": "300ms"
+    }
+  },
+  "cubicBezier": {
+    "easeOut": {
+      "$type": "cubicBezier",
+      "$value": [0, 0, 0.2, 1]
+    }
+  },
+  "number": {
+    "opacity": {
+      "disabled": {
+        "$type": "number",
+        "$value": 0.4
+      }
+    },
+    "zIndex": {
+      "modal": {
+        "$type": "number",
+        "$value": 1000
+      }
+    }
+  },
+  "strokeStyle": {
+    "solid": {
+      "$type": "strokeStyle",
+      "$value": "solid"
+    },
+    "dashed": {
+      "$type": "strokeStyle",
+      "$value": {
+        "dashArray": ["4px", "2px"],
+        "lineCap": "round"
+      }
+    }
+  },
+  "border": {
+    "default": {
+      "$type": "border",
+      "$value": {
+        "color": "{color.semantic.text.default}",
+        "width": "1px",
+        "style": "{strokeStyle.solid}"
+      }
+    }
+  },
+  "shadow": {
+    "sm": {
+      "$type": "shadow",
+      "$value": {
+        "color": "rgba(15, 23, 42, 0.12)",
+        "offsetX": "0px",
+        "offsetY": "1px",
+        "blur": "2px",
+        "spread": "0px"
+      }
+    },
+    "md": {
+      "$type": "shadow",
+      "$value": [
+        {
+          "color": "rgba(15, 23, 42, 0.10)",
+          "offsetX": "0px",
+          "offsetY": "4px",
+          "blur": "8px",
+          "spread": "0px"
+        },
+        {
+          "color": "rgba(15, 23, 42, 0.06)",
+          "offsetX": "0px",
+          "offsetY": "2px",
+          "blur": "4px",
+          "spread": "0px"
+        }
+      ]
+    }
+  },
+  "typography": {
+    "body": {
+      "md": {
+        "$type": "typography",
+        "$value": {
+          "fontFamily": "{fontFamily.sans}",
+          "fontSize": "16px",
+          "fontWeight": "{fontWeight.regular}",
+          "lineHeight": "24px",
+          "letterSpacing": "0px"
+        }
+      }
+    }
+  },
+  "transition": {
+    "default": {
+      "$type": "transition",
+      "$value": {
+        "duration": "{duration.normal}",
+        "delay": "0ms",
+        "timingFunction": "{cubicBezier.easeOut}"
+      }
+    }
+  },
+  "gradient": {
+    "brand": {
+      "$type": "gradient",
+      "$value": [
+        {
+          "color": "{color.core.blue.500}",
+          "position": 0
+        },
+        {
+          "color": "#00C2FF",
+          "position": 1
+        }
+      ]
+    }
+  },
+  "asset": {
+    "logo": {
+      "$type": "asset",
+      "$value": {
+        "url": "https://example.com/logo.svg",
+        "format": "svg"
+      }
+    }
+  }
+}
