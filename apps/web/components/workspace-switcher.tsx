@@ -6,14 +6,10 @@ import { Check, ChevronsUpDown, Layers, Plus } from "lucide-react";
 
 import { CreateWorkspaceDialog } from "@/components/create-workspace-dialog";
 import { Button } from "@/components/ui/button";
-import { readJsonResponse } from "@/lib/api/read-json-response";
+import { listWorkspaces } from "@/lib/workspaces/local-store";
 import { cn } from "@/lib/utils";
 
-type WorkspaceSummary = {
-  id: string;
-  name: string;
-  slug: string;
-};
+import type { LocalWorkspace } from "@tokencraft/core";
 
 function getWorkspaceSlugFromPath(pathname: string) {
   const match = pathname.match(/\/dashboard\/workspaces\/([^/]+)/);
@@ -25,20 +21,16 @@ function getWorkspaceDestination(pathname: string, slug: string) {
     return `/dashboard/workspaces/${encodeURIComponent(slug)}/settings`;
   }
 
-  if (pathname.includes("/tokens")) {
-    return `/dashboard/workspaces/${encodeURIComponent(slug)}/tokens`;
-  }
-
   return `/dashboard/workspaces/${encodeURIComponent(slug)}/tokens`;
 }
 
-export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
+export function WorkspaceSwitcher() {
   const pathname = usePathname();
   const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([]);
+  const [workspaces, setWorkspaces] = useState<LocalWorkspace[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   const currentSlug = getWorkspaceSlugFromPath(pathname);
@@ -48,28 +40,10 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
     [currentSlug, workspaces]
   );
 
-  async function loadWorkspaces() {
-    setIsLoading(true);
-
-    try {
-      const response = await fetch("/api/workspaces", {
-        credentials: "same-origin",
-        cache: "no-store",
-        redirect: "manual",
-      });
-      const result = await readJsonResponse<{ workspaces?: WorkspaceSummary[] }>(response);
-
-      if (result.data?.workspaces) {
-        setWorkspaces(result.data.workspaces);
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
   useEffect(() => {
-    void loadWorkspaces();
-  }, []);
+    setWorkspaces(listWorkspaces());
+    setIsLoading(false);
+  }, [pathname]);
 
   useEffect(() => {
     function handlePointerDown(event: MouseEvent) {
@@ -90,9 +64,9 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
     setOpen(false);
   }
 
-  function handleWorkspaceCreated(workspace: WorkspaceSummary) {
+  function handleWorkspaceCreated(workspace: LocalWorkspace) {
     setWorkspaces((current) => [workspace, ...current]);
-    router.push(`/dashboard/workspaces/${encodeURIComponent(workspace.slug)}/settings`);
+    router.push(`/dashboard/workspaces/${encodeURIComponent(workspace.slug)}/tokens`);
   }
 
   const label = currentWorkspace?.name ?? "Workspace";
@@ -106,31 +80,18 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
         <Button
           type="button"
           variant="ghost"
-          className={cn(
-            "h-auto w-full justify-start gap-2 px-3 py-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-            collapsed && "justify-center px-2"
-          )}
-          title={collapsed ? label : undefined}
+          className="h-auto w-full justify-start gap-2 px-3 py-2 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
           onClick={() => setOpen((value) => !value)}
         >
           <Layers className="h-4 w-4 shrink-0" />
-          {!collapsed ? (
-            <>
-              <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">
-                {isLoading ? "Loading…" : label}
-              </span>
-              <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-60" />
-            </>
-          ) : null}
+          <span className="min-w-0 flex-1 truncate text-left text-sm font-medium">
+            {isLoading ? "Loading…" : label}
+          </span>
+          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-60" />
         </Button>
 
         {open ? (
-          <div
-            className={cn(
-              "absolute z-50 mt-1 min-w-[14rem] rounded-lg border bg-popover p-1 text-popover-foreground shadow-md",
-              collapsed ? "left-full top-0 ml-2" : "inset-x-3"
-            )}
-          >
+          <div className="absolute inset-x-3 z-50 mt-1 min-w-[14rem] rounded-lg border bg-popover p-1 text-popover-foreground shadow-md">
             <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
               Workspaces
             </div>
@@ -148,6 +109,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
                       "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent",
                       isActive && "bg-accent"
                     )}
+                    title={workspace.rootPath}
                   >
                     <span className="min-w-0 flex-1 truncate">{workspace.name}</span>
                     {isActive ? <Check className="h-4 w-4 shrink-0" /> : null}
@@ -171,7 +133,7 @@ export function WorkspaceSwitcher({ collapsed }: { collapsed: boolean }) {
               className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent"
             >
               <Plus className="h-4 w-4 shrink-0" />
-              Create workspace
+              Open another project…
             </button>
           </div>
         ) : null}

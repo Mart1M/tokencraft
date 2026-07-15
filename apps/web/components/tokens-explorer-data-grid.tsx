@@ -4,37 +4,45 @@ import { useCallback, useMemo } from "react";
 import type { ColumnDef } from "@tanstack/react-table";
 
 import { DataGrid } from "@/components/data-grid/data-grid";
+import { TokenModeColumnHeader } from "@/components/tokens/token-mode-column-header";
 import type { ImportedTokenRow } from "@/lib/tokens/entries";
 import {
+  getDraftsForToken,
   getEffectiveTokenRow,
 } from "@/lib/tokens/draft-utils";
-import { getRowDisplayValue } from "@/lib/tokens/display";
+import { getRowModeDisplayValue } from "@/lib/tokens/display";
 import type { TokenGridRow } from "@/lib/tokens/grid-row";
 import type { useTokenDraftStore } from "@/lib/tokens/draft-store";
 import { useDataGrid } from "@/hooks/use-data-grid";
 
+function toModeColumnId(mode: string) {
+  return `mode-${mode.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+}
+
 function toGridRow(
   token: ImportedTokenRow,
-  draft: ReturnType<typeof useTokenDraftStore.getState>["drafts"][string] | undefined,
-  resolvedMode: string | null
+  drafts: ReturnType<typeof useTokenDraftStore.getState>["drafts"],
+  availableModes: string[]
 ): TokenGridRow {
-  const effectiveRow = getEffectiveTokenRow(token, draft);
-  const displayValue = getRowDisplayValue(effectiveRow, resolvedMode);
-  const draftStatus =
-    draft?.operation === "create"
-      ? "create"
-      : draft?.operation === "delete"
-        ? "delete"
-        : draft
-          ? "update"
-          : null;
+  const tokenDrafts = getDraftsForToken(drafts, token.id);
+  const effectiveRow = getEffectiveTokenRow(token, tokenDrafts);
+  const modeValues = Object.fromEntries(
+    availableModes.map((mode) => [
+      mode,
+      getRowModeDisplayValue(effectiveRow, mode),
+    ]),
+  );
+  const draftStatus = tokenDrafts.some((draft) => draft.operation === "create")
+    ? "create"
+    : tokenDrafts.some((draft) => draft.operation === "delete")
+      ? "delete"
+      : null;
 
   return {
     id: token.id,
     name: token.name,
     typeLabel: token.type ?? "",
-    valueText: displayValue.text,
-    displayValue,
+    modeValues,
     draftStatus,
     token,
   };
@@ -42,21 +50,31 @@ function toGridRow(
 
 export function TokensExplorerDataGrid({
   rows,
-  resolvedMode,
+  availableModes,
   drafts,
   selectedTokenId,
   onTokenRowActivate,
+  onAddMode,
+  showAddModeControl = false,
+  onRenameMode,
+  onDeleteMode,
+  canDeleteMode = true,
 }: {
   rows: ImportedTokenRow[];
-  resolvedMode: string | null;
+  availableModes: string[];
   drafts: ReturnType<typeof useTokenDraftStore.getState>["drafts"];
   selectedTokenId: string | null;
   onTokenRowActivate: (rowId: string) => void;
+  onAddMode?: (mode: string) => void;
+  showAddModeControl?: boolean;
+  onRenameMode?: (mode: string, newName: string) => Promise<boolean>;
+  onDeleteMode?: (mode: string) => Promise<boolean>;
+  canDeleteMode?: boolean;
 }) {
   const gridData = useMemo(
     () =>
-      rows.map((token) => toGridRow(token, drafts[token.id], resolvedMode)),
-    [rows, drafts, resolvedMode]
+      rows.map((token) => toGridRow(token, drafts, availableModes)),
+    [rows, drafts, availableModes]
   );
 
   const columns = useMemo<ColumnDef<TokenGridRow>[]>(
@@ -65,7 +83,8 @@ export function TokensExplorerDataGrid({
         id: "name",
         accessorKey: "name",
         header: "Token",
-        minSize: 240,
+        size: 260,
+        minSize: 180,
         enableResizing: false,
         enablePinning: false,
         enableHiding: false,
@@ -78,7 +97,8 @@ export function TokensExplorerDataGrid({
         id: "type",
         accessorKey: "typeLabel",
         header: "Type",
-        size: 140,
+        size: 130,
+        minSize: 100,
         enableResizing: false,
         enablePinning: false,
         enableHiding: false,
@@ -87,21 +107,35 @@ export function TokensExplorerDataGrid({
           cell: { variant: "token-type" },
         },
       },
-      {
-        id: "value",
-        accessorKey: "valueText",
-        header: "Value",
-        minSize: 280,
-        enableResizing: false,
-        enablePinning: false,
-        enableHiding: false,
-        meta: {
-          label: "Value",
-          cell: { variant: "token-value" },
-        },
-      },
+      ...availableModes.map((mode, index) => {
+        const isLastModeColumn = index === availableModes.length - 1;
+
+        return {
+          id: toModeColumnId(mode),
+          accessorFn: (row: TokenGridRow) => row.modeValues[mode]?.text ?? "",
+          header: () => (
+            <TokenModeColumnHeader
+              mode={mode}
+              showAddControl={isLastModeColumn && showAddModeControl}
+              onAddMode={onAddMode}
+              onRenameMode={onRenameMode}
+              onDeleteMode={onDeleteMode}
+              canDeleteMode={canDeleteMode}
+            />
+          ),
+          size: 200,
+          minSize: 140,
+          enableResizing: false,
+          enablePinning: false,
+          enableHiding: false,
+          meta: {
+            label: mode,
+            cell: { variant: "token-value" as const, modeKey: mode },
+          },
+        };
+      }),
     ],
-    []
+    [availableModes, onAddMode, showAddModeControl, onRenameMode, onDeleteMode, canDeleteMode]
   );
 
   const handleTokenRowActivate = useCallback(

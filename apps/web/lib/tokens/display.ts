@@ -36,6 +36,46 @@ const COMPOSITE_FIELD_ORDER: Record<string, string[]> = {
   strokeStyle: getCompositeFieldKeys("strokeStyle"),
 };
 
+// Composite token types (e.g. Tokens Studio "composition" tokens) store a
+// bundle of style-category references keyed by field names such as
+// "typography", "fontWeight", or "delay". These collide with the shape of a
+// mode map (plain object, string/number/object values, no "$value") but are
+// not modes, so they must not be misdetected as one.
+const RESERVED_COMPOSITE_FIELD_KEYS = new Set([
+  "typography",
+  "border",
+  "boxShadow",
+  "shadow",
+  "transition",
+  "asset",
+  "strokeStyle",
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "lineHeight",
+  "letterSpacing",
+  "textCase",
+  "textDecoration",
+  "opticalSizing",
+  "underliningOffset",
+  "duration",
+  "delay",
+  "easing",
+  "timingFunction",
+  "offsetX",
+  "offsetY",
+  "blur",
+  "spread",
+  "inset",
+  "width",
+  "lineWidth",
+  "style",
+  "dashArray",
+  "lineCap",
+  "url",
+  "format",
+]);
+
 export function looksLikeModeMap(value: Record<string, unknown>) {
   if ("$value" in value || "$type" in value || "value" in value) {
     return false;
@@ -43,6 +83,10 @@ export function looksLikeModeMap(value: Record<string, unknown>) {
 
   const keys = Object.keys(value);
   if (keys.length === 0) {
+    return false;
+  }
+
+  if (keys.some((key) => RESERVED_COMPOSITE_FIELD_KEYS.has(key))) {
     return false;
   }
 
@@ -114,12 +158,24 @@ export function resolveStoredTokenModes(entry: {
 export function parseCssColor(value: string) {
   const trimmed = value.trim();
 
-  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(trimmed)) {
+  if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(trimmed)) {
     return trimmed;
   }
 
   if (/^(rgb|rgba|hsl|hsla)\(.+\)$/i.test(trimmed)) {
     return trimmed;
+  }
+
+  return undefined;
+}
+
+export function resolveDisplayColor(value: TokenDisplayValue): string | undefined {
+  if (value.kind === "color" && value.color) {
+    return value.color;
+  }
+
+  if (value.kind === "text") {
+    return parseCssColor(value.text);
   }
 
   return undefined;
@@ -137,7 +193,7 @@ function buildPartFromRaw(raw: unknown, valueType?: string): TokenDisplayPart {
       };
     }
 
-    const color = valueType === "color" ? parseCssColor(raw) : undefined;
+    const color = parseCssColor(raw);
 
     if (color) {
       return { kind: "color", text: raw, color };
@@ -273,7 +329,7 @@ export function buildTokenDisplayValue(raw: unknown, type?: string): TokenDispla
       };
     }
 
-    const color = type === "color" ? parseCssColor(raw) : undefined;
+    const color = parseCssColor(raw);
 
     if (color) {
       return { kind: "color", text: raw, color };
@@ -438,6 +494,48 @@ export function getDefaultMode(modes: string[]) {
   }
 
   return modes[0] ?? null;
+}
+
+export function getRowModeDisplayValue(
+  row: {
+    value: string;
+    type?: string;
+    display?: TokenDisplayValue;
+    modes?: Record<string, TokenDisplayValue>;
+  },
+  mode: string
+): TokenDisplayValue | null {
+  const activeMode = mode === "Default" ? null : mode;
+
+  if (row.modes && Object.keys(row.modes).length > 0) {
+    const modeKey = findModeKey(row.modes, activeMode);
+
+    if (modeKey) {
+      return row.modes[modeKey];
+    }
+
+    // No mode was selected (the "Default" column): fall back to the first
+    // available mode value rather than showing an empty cell.
+    return !activeMode ? Object.values(row.modes)[0] ?? null : null;
+  }
+
+  const legacyModes = parseLegacyModeValue(row.value, row.type);
+
+  if (legacyModes) {
+    const modeKey = findModeKey(legacyModes, activeMode);
+
+    if (modeKey) {
+      return legacyModes[modeKey];
+    }
+
+    return !activeMode ? Object.values(legacyModes)[0] ?? null : null;
+  }
+
+  if (!activeMode) {
+    return row.display ?? buildTokenDisplayValueFromString(row.value, row.type);
+  }
+
+  return null;
 }
 
 export function getRowDisplayValue(

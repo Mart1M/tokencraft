@@ -56,6 +56,7 @@ export type CellOpts =
     }
   | {
       variant: "token-value";
+      modeKey?: string;
     };
 
 export interface CellUpdate {

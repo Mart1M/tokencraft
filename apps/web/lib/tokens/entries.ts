@@ -1,12 +1,11 @@
-import type { TokenFile } from "@prisma/client";
-
 import {
   buildTokenDisplayValueFromString,
   collectTokenModes,
   resolveStoredTokenModes,
   type TokenDisplayValue,
 } from "@/lib/tokens/display";
-import { parseTokenFileMetadata, type StoredTokenEntry, type StoredTokenRawValue } from "@/lib/tokens/flatten";
+import type { LocalTokenFile } from "@/lib/tokens/fs";
+import { type StoredTokenEntry, type StoredTokenRawValue } from "@/lib/tokens/flatten";
 
 export type ImportedTokenRow = {
   id: string;
@@ -49,7 +48,6 @@ export type TokenSidebarCollection = {
   id: string;
   name: string;
   modes: string[];
-  syncStatus: "SYNCED" | "LOCAL";
   path: string;
   pendingDelete?: boolean;
 };
@@ -69,32 +67,29 @@ function collectModesFromStoredTokens(tokens: StoredTokenEntry[]) {
 }
 
 export function getTokenSidebarCollections(
-  tokenFiles: TokenFile[]
+  tokenFiles: LocalTokenFile[],
+  pendingCollectionDeletes: string[] = []
 ): TokenSidebarCollection[] {
   return tokenFiles.map((file) => {
-    const metadata = parseTokenFileMetadata(file.metadata);
-    const modes = collectModesFromStoredTokens(metadata.tokens);
+    const modes = file.configuredModes?.length
+      ? file.configuredModes
+      : collectModesFromStoredTokens(file.metadata.tokens);
 
     return {
       id: file.id,
       name: file.collectionName,
       modes: modes.length > 0 ? modes : ["Default"],
-      syncStatus: file.syncStatus,
       path: file.path,
-      ...(file.pendingDelete ? { pendingDelete: true } : {}),
+      ...(pendingCollectionDeletes.includes(file.id) ? { pendingDelete: true } : {}),
     };
   });
 }
 
-export function getImportedTokenRows(tokenFiles: TokenFile[]): ImportedTokenRow[] {
+export function getImportedTokenRows(tokenFiles: LocalTokenFile[]): ImportedTokenRow[] {
   const rows: ImportedTokenRow[] = [];
 
   for (const file of tokenFiles) {
-    if (file.pendingDelete) {
-      continue;
-    }
-
-    const metadata = parseTokenFileMetadata(file.metadata);
+    const metadata = file.metadata;
 
     for (const entry of metadata.tokens) {
       const modes = resolveStoredTokenModes(entry);

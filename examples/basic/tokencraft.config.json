@@ -1,0 +1,4 @@
+{
+  "version": 1,
+  "files": ["tokens/core.tokens.json", "tokens/semantic.tokens.json"]
+}

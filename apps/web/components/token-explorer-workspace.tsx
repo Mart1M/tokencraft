@@ -1,35 +1,67 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Plus } from "lucide-react";
 
 import { DashboardPageHeader } from "@/components/dashboard-page-header";
 import { TokenEditPanel } from "@/components/token-edit-panel";
-import { TokenGitToolbar } from "@/components/token-git-toolbar";
+import { useTokenExplorer } from "@/components/token-explorer-provider";
 import { TokensCollectionsEmptyState } from "@/components/tokens-collections-empty-state";
 import { TokensExplorerTable } from "@/components/tokens-explorer-table";
+import { Button } from "@/components/ui/button";
+import { useTokenAutoSave } from "@/hooks/use-token-auto-save";
 import type { ImportedTokenRow } from "@/lib/tokens/entries";
 import { cn } from "@/lib/utils";
 import { useTokenDraftStore } from "@/lib/tokens/draft-store";
+
+function TokenAutoSaveStatus({
+  status,
+  error,
+}: {
+  status: ReturnType<typeof useTokenAutoSave>["status"];
+  error: string | null;
+}) {
+  if (status === "saving") {
+    return <span className="text-xs text-muted-foreground">Saving…</span>;
+  }
+
+  if (status === "saved") {
+    return <span className="text-xs text-muted-foreground">Saved</span>;
+  }
+
+  if (status === "error" && error) {
+    return <span className="text-xs text-destructive">{error}</span>;
+  }
+
+  return null;
+}
 
 export function TokenExplorerWorkspace({
   title,
   tokens,
   settingsHref,
-  workspaceId,
-  branch,
-  initialRemoteChanges,
   collections,
 }: {
   title: ReactNode;
   tokens: ImportedTokenRow[];
   settingsHref: string;
-  workspaceId: string;
-  branch: string;
-  initialRemoteChanges: boolean;
   collections: Array<{ id: string; name: string; path: string }>;
 }) {
   const isPanelOpen = useTokenDraftStore((state) => state.isPanelOpen);
+  const openCreateToken = useTokenDraftStore((state) => state.openCreateToken);
+  const pendingCollectionDeletes = useTokenDraftStore(
+    (state) => state.pendingCollectionDeletes,
+  );
+  const { selectedCollectionId } = useTokenExplorer();
+  const { status, error } = useTokenAutoSave();
   const hasCollections = collections.length > 0;
+
+  const selectedCollection = collections.find(
+    (collection) => collection.id === selectedCollectionId,
+  );
+  const canAddToken = Boolean(
+    selectedCollection && !pendingCollectionDeletes.includes(selectedCollection.id),
+  );
 
   return (
     <>
@@ -43,20 +75,31 @@ export function TokenExplorerWorkspace({
           <DashboardPageHeader
             title={title}
             actions={
-              <TokenGitToolbar
-                workspaceId={workspaceId}
-                branch={branch}
-                initialRemoteChanges={initialRemoteChanges}
-              />
+              <div className="flex items-center gap-3">
+                <TokenAutoSaveStatus status={status} error={error} />
+                {canAddToken ? (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="default"
+                    onClick={() =>
+                      openCreateToken({
+                        fileId: selectedCollection!.id,
+                        collectionName: selectedCollection!.name,
+                        sourcePath: selectedCollection!.path,
+                      })
+                    }
+                  >
+                    <Plus size={14} />
+                    Add token
+                  </Button>
+                ) : null}
+              </div>
             }
           />
         </div>
         {hasCollections ? (
-          <TokensExplorerTable
-            tokens={tokens}
-            settingsHref={settingsHref}
-            collections={collections}
-          />
+          <TokensExplorerTable tokens={tokens} />
         ) : (
           <TokensCollectionsEmptyState settingsHref={settingsHref} />
         )}

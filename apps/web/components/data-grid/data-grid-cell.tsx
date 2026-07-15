@@ -25,13 +25,17 @@ function isTokenGridRow(value: unknown): value is TokenGridRow {
   return (
     typeof value === "object" &&
     value !== null &&
-    "displayValue" in value &&
+    "modeValues" in value &&
     "draftStatus" in value
   );
 }
 
 function tokenGridRowSignature(row: TokenGridRow) {
-  return `${row.name}\0${row.typeLabel}\0${row.valueText}\0${row.draftStatus ?? ""}\0${row.displayValue.text}\0${row.displayValue.kind}`;
+  const modeValuesSignature = Object.entries(row.modeValues)
+    .map(([mode, value]) => `${mode}:${value?.kind ?? ""}:${value?.text ?? ""}`)
+    .join(",");
+
+  return `${row.name}\0${row.typeLabel}\0${row.draftStatus ?? ""}\0${modeValuesSignature}`;
 }
 
 export const DataGridCell = React.memo(DataGridCellImpl, (prev, next) => {

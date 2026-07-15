@@ -8,4 +8,4 @@ coverage
 .env.*.local
 *.tsbuildinfo
 .DS_Store
-prisma/dev.db
+.claude/

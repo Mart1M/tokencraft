@@ -1,7 +1,4 @@
-import { prisma } from "@/lib/db/prisma";
-import type { ActorScope } from "@/lib/auth/scope";
-import { getWorkspaceActiveBranch } from "@/lib/workspaces/branch";
-import { getWorkspaceTokenExplorer } from "@/lib/workspaces/service";
+import { createTokenFile, WorkspaceFsError } from "@/lib/tokens/fs";
 
 export class CollectionOperationError extends Error {
   constructor(
@@ -13,137 +10,38 @@ export class CollectionOperationError extends Error {
   }
 }
 
-function normalizeCollectionPath(path: string) {
-  return path.trim().replace(/^\/+/, "");
-}
-
-function validateCollectionPath(path: string) {
-  const normalized = normalizeCollectionPath(path);
-
-  if (!normalized) {
-    throw new CollectionOperationError("Collection path is required.");
+function deriveCollectionPath(input: { path?: string; collectionName?: string }) {
+  if (input.path?.trim()) {
+    return input.path.trim();
   }
 
-  if (!normalized.toLowerCase().endsWith(".json")) {
-    throw new CollectionOperationError("Collection path must end with .json.");
+  const name = input.collectionName?.trim();
+
+  if (!name) {
+    throw new CollectionOperationError("A path or collection name is required.");
   }
 
-  if (normalized.includes("..")) {
-    throw new CollectionOperationError("Collection path is invalid.");
-  }
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 
-  return normalized;
-}
-
-function deriveCollectionName(path: string, displayName?: string) {
-  if (displayName?.trim()) {
-    return displayName.trim();
-  }
-
-  const filename = path.split("/").pop() ?? path;
-  return filename.replace(/\.json$/i, "");
-}
-
-function deriveTopLevelKeysFromPath(_path: string) {
-  return [];
-}
-
-async function requireWorkspace(scope: ActorScope, workspaceId: string) {
-  const workspace = await getWorkspaceTokenExplorer(scope, workspaceId);
-
-  if (!workspace) {
-    throw new CollectionOperationError("Workspace not found.", 404);
-  }
-
-  if (!workspace.selectedRepository) {
-    throw new CollectionOperationError("Select a repository before managing collections.", 400);
-  }
-
-  return workspace;
+  return `${slug || "collection"}.tokens.json`;
 }
 
 export async function createWorkspaceCollection(
-  scope: ActorScope,
-  workspaceId: string,
-  input: { path: string; collectionName?: string }
+  rootPath: string,
+  input: { path?: string; collectionName?: string }
 ) {
-  const workspace = await requireWorkspace(scope, workspaceId);
-  const path = validateCollectionPath(input.path);
-  const collectionName = deriveCollectionName(path, input.collectionName);
+  const relativePath = deriveCollectionPath(input);
 
-  const existing = await prisma.tokenFile.findUnique({
-    where: {
-      workspaceId_path: {
-        workspaceId: workspace.id,
-        path,
-      },
-    },
-  });
+  try {
+    return await createTokenFile(rootPath, relativePath, input.collectionName);
+  } catch (error) {
+    if (error instanceof WorkspaceFsError) {
+      throw new CollectionOperationError(error.message, error.status);
+    }
 
-  if (existing) {
-    throw new CollectionOperationError("A collection already exists at this path.", 409);
+    throw error;
   }
-
-  const topLevelKeys = deriveTopLevelKeysFromPath(
-    path.replace(/\.json$/i, "").split("/").pop() ?? ""
-  );
-
-  const tokenFile = await prisma.tokenFile.create({
-    data: {
-      workspaceId: workspace.id,
-      repositoryId: workspace.selectedRepository!.id,
-      path,
-      sha: null,
-      syncStatus: "LOCAL",
-      pendingDelete: false,
-      collectionName,
-      format: "DTCG",
-      tokenCount: 0,
-      metadata: {
-        topLevelKeys,
-        tokens: [],
-      },
-    },
-  });
-
-  return {
-    collection: tokenFile,
-    branch: getWorkspaceActiveBranch(workspace),
-  };
-}
-
-export async function deleteWorkspaceCollection(
-  scope: ActorScope,
-  workspaceId: string,
-  fileId: string
-) {
-  const workspace = await requireWorkspace(scope, workspaceId);
-  const tokenFile = workspace.tokenFiles.find((file) => file.id === fileId);
-
-  if (!tokenFile) {
-    throw new CollectionOperationError("Collection not found.", 404);
-  }
-
-  if (tokenFile.syncStatus === "LOCAL") {
-    await prisma.tokenFile.delete({
-      where: { id: fileId },
-    });
-
-    return {
-      deleted: true,
-      pendingDelete: false,
-      branch: getWorkspaceActiveBranch(workspace),
-    };
-  }
-
-  await prisma.tokenFile.update({
-    where: { id: fileId },
-    data: { pendingDelete: true },
-  });
-
-  return {
-    deleted: false,
-    pendingDelete: true,
-    branch: getWorkspaceActiveBranch(workspace),
-  };
 }

@@ -41,6 +41,37 @@ export type TokenDraft = {
   extensions?: TokenExtensions;
 };
 
+export function getDraftKey(draft: Pick<TokenDraft, "tokenId" | "mode">) {
+  if (draft.mode) {
+    return `${draft.tokenId}::${draft.mode}`;
+  }
+
+  return draft.tokenId;
+}
+
+export function getDraftsForToken(
+  drafts: Record<string, TokenDraft>,
+  tokenId: string,
+): TokenDraft[] {
+  return Object.entries(drafts)
+    .filter(([key]) => key === tokenId || key.startsWith(`${tokenId}::`))
+    .map(([, draft]) => draft);
+}
+
+export function resolveStorageMode(
+  token: ImportedTokenRow,
+  mode: string,
+): string | null {
+  if (token.modes) {
+    return (
+      resolveModeKey(token.modes, mode) ??
+      (mode === "Default" ? null : mode)
+    );
+  }
+
+  return mode === "Default" ? null : mode;
+}
+
 export function formatDraftValue(
   draft: Pick<TokenDraft, "valueKind" | "rawValue" | "type">
 ) {
@@ -155,9 +186,18 @@ export function applyDraftToRow(
 ): ImportedTokenRow {
   const formatted = formatDraftValue(draft);
 
-  if (draft.mode && row.modes) {
+  if (draft.mode) {
+    // Seed a modes map from the token's current flat value when it doesn't
+    // have one yet, so setting a value under a brand-new mode doesn't lose
+    // the existing value or silently edit the wrong field.
+    const existingModes =
+      row.modes ??
+      ({
+        Default: row.display ?? buildTokenDisplayValueFromString(row.value, row.type),
+      } satisfies Record<string, TokenDisplayValue>);
+
     const nextModes = {
-      ...row.modes,
+      ...existingModes,
       [draft.mode]: buildTokenDisplayValue(formatted, row.type),
     };
 
@@ -192,13 +232,18 @@ export function applyDraftToRow(
 
 export function getEffectiveTokenRow(
   row: ImportedTokenRow,
-  draft?: TokenDraft
+  draft?: TokenDraft | TokenDraft[],
 ): ImportedTokenRow {
   if (!draft) {
     return row;
   }
 
-  return applyDraftToRow(row, draft);
+  const drafts = Array.isArray(draft) ? draft : [draft];
+
+  return drafts.reduce(
+    (current, nextDraft) => applyDraftToRow(current, nextDraft),
+    row,
+  );
 }
 
 export function getEditableRawValue(
@@ -213,12 +258,33 @@ export function getEditableRawValue(
     };
   }
 
-  const modeKey = row.modes && mode ? resolveModeKey(row.modes, mode) : null;
-  const display =
-    modeKey && row.modes ? row.modes[modeKey] : row.display;
+  if (mode) {
+    const modeKey = row.modes ? resolveModeKey(row.modes, mode) : null;
 
-  if (display) {
-    return draftFromDisplayValue(row, mode, display);
+    if (modeKey && row.modes) {
+      return draftFromDisplayValue(row, mode, row.modes[modeKey]);
+    }
+
+    if (row.modes) {
+      // Brand-new mode on a token that already has other modes: start from
+      // an empty value instead of dumping the raw multi-mode JSON.
+      return { valueKind: "literal" as const, rawValue: "" };
+    }
+
+    // Token doesn't have a modes map yet; seed the new mode from its
+    // current flat value so it's not created blank.
+    if (row.display) {
+      return draftFromDisplayValue(row, mode, row.display);
+    }
+
+    return {
+      valueKind: inferValueKind(row.value, row.type),
+      rawValue: row.value,
+    };
+  }
+
+  if (row.display) {
+    return draftFromDisplayValue(row, mode, row.display);
   }
 
   return {

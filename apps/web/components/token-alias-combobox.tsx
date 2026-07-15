@@ -19,15 +19,17 @@ export function TokenAliasCombobox({
   value,
   onValueChange,
   disabled,
+  defaultOpen = false,
 }: {
   options: TokenAliasOption[];
   value: string;
   onValueChange: (path: string) => void;
   disabled?: boolean;
+  defaultOpen?: boolean;
 }) {
   const listboxId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
   const normalizedValue = normalizeAliasValue(value);
 
@@ -99,7 +101,7 @@ export function TokenAliasCombobox({
         aria-expanded={open}
         aria-controls={listboxId}
         disabled={disabled}
-        className="h-10 w-full justify-between font-mono text-sm font-normal"
+        className="h-9 w-full justify-between font-mono text-sm font-normal"
         onClick={() => setOpen((current) => !current)}
       >
         <span className="truncate">

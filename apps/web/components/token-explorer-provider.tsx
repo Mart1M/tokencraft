@@ -19,6 +19,11 @@ type TokenExplorerContextValue = {
   resolvedMode: string | null;
   selectedCollectionId: string | null;
   setSelectedCollectionId: (id: string | null) => void;
+  selectedGroupSegments: string[] | null;
+  setSelectedGroupSegments: (segments: string[] | null) => void;
+  addMode: (mode: string) => void;
+  renameCollectionMode: (oldMode: string, newMode: string) => void;
+  deleteCollectionMode: (mode: string) => void;
 };
 
 const TokenExplorerContext = createContext<TokenExplorerContextValue | null>(null);
@@ -60,23 +65,38 @@ export function TokenExplorerProvider({
   availableModes: string[];
   collections?: TokenSidebarCollection[];
 }) {
-  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(
+  const [selectedCollectionId, setSelectedCollectionIdState] = useState<string | null>(
     () => collections[0]?.id ?? null
   );
+  const [selectedGroupSegments, setSelectedGroupSegments] = useState<string[] | null>(null);
+  // Modes a user has added in this session but hasn't saved a token value for
+  // yet, so they aren't derivable from `collections[].modes`. Keyed by
+  // collection id since modes are per-collection.
+  const [manualModesByCollection, setManualModesByCollection] = useState<
+    Record<string, string[]>
+  >({});
   const [activeMode, setActiveMode] = useState<string | null>(() =>
     collections[0]
       ? getCollectionDefaultActiveMode(collections[0].modes)
       : getCollectionDefaultActiveMode(fallbackModes)
   );
 
+  const setSelectedCollectionId = useMemo(
+    () => (id: string | null) => {
+      setSelectedCollectionIdState(id);
+      setSelectedGroupSegments(null);
+    },
+    []
+  );
+
   useEffect(() => {
     if (collections.length === 0) {
-      setSelectedCollectionId(null);
+      setSelectedCollectionIdState(null);
       setActiveMode(getCollectionDefaultActiveMode(fallbackModes));
       return;
     }
 
-    setSelectedCollectionId((current) => {
+    setSelectedCollectionIdState((current) => {
       if (current && collections.some((collection) => collection.id === current)) {
         return current;
       }
@@ -85,31 +105,101 @@ export function TokenExplorerProvider({
     });
   }, [collections, fallbackModes]);
 
+  const availableModes = useMemo(() => {
+    const base = getCollectionModes(collections, selectedCollectionId, fallbackModes);
+    const manual = selectedCollectionId
+      ? (manualModesByCollection[selectedCollectionId] ?? [])
+      : [];
+
+    return manual.length === 0 ? base : Array.from(new Set([...base, ...manual]));
+  }, [collections, selectedCollectionId, fallbackModes, manualModesByCollection]);
+
   useEffect(() => {
-    const selectedCollection = collections.find(
-      (collection) => collection.id === selectedCollectionId
-    );
-
-    if (!selectedCollection) {
-      return;
-    }
-
     setActiveMode((current) => {
-      if (current && selectedCollection.modes.includes(current)) {
+      if (current && availableModes.includes(current)) {
         return current;
       }
 
-      if (current === null && selectedCollection.modes.includes("Default")) {
+      if (current === null && availableModes.includes("Default")) {
         return null;
       }
 
-      return getCollectionDefaultActiveMode(selectedCollection.modes);
+      return getCollectionDefaultActiveMode(availableModes);
     });
-  }, [collections, selectedCollectionId]);
+  }, [availableModes]);
 
-  const availableModes = useMemo(
-    () => getCollectionModes(collections, selectedCollectionId, fallbackModes),
-    [collections, selectedCollectionId, fallbackModes]
+  const addMode = useMemo(
+    () => (mode: string) => {
+      const trimmed = mode.trim();
+
+      if (!trimmed || !selectedCollectionId) {
+        return;
+      }
+
+      setManualModesByCollection((current) => {
+        const existing = current[selectedCollectionId] ?? [];
+
+        if (existing.includes(trimmed)) {
+          return current;
+        }
+
+        return { ...current, [selectedCollectionId]: [...existing, trimmed] };
+      });
+      setActiveMode(trimmed);
+    },
+    [selectedCollectionId]
+  );
+
+  const renameCollectionMode = useMemo(
+    () => (oldMode: string, newMode: string) => {
+      const trimmedNew = newMode.trim();
+
+      if (!trimmedNew || !selectedCollectionId) {
+        return;
+      }
+
+      setManualModesByCollection((current) => {
+        const existing = current[selectedCollectionId];
+
+        if (!existing?.includes(oldMode)) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [selectedCollectionId]: existing.map((mode) =>
+            mode === oldMode ? trimmedNew : mode
+          ),
+        };
+      });
+
+      setActiveMode((current) => (current === oldMode ? trimmedNew : current));
+    },
+    [selectedCollectionId]
+  );
+
+  const deleteCollectionMode = useMemo(
+    () => (mode: string) => {
+      if (!selectedCollectionId) {
+        return;
+      }
+
+      setManualModesByCollection((current) => {
+        const existing = current[selectedCollectionId];
+
+        if (!existing?.includes(mode)) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [selectedCollectionId]: existing.filter((currentMode) => currentMode !== mode),
+        };
+      });
+
+      setActiveMode((current) => (current === mode ? null : current));
+    },
+    [selectedCollectionId]
   );
 
   const resolvedMode = activeMode ?? getDefaultMode(availableModes);
@@ -122,8 +212,23 @@ export function TokenExplorerProvider({
       resolvedMode,
       selectedCollectionId,
       setSelectedCollectionId,
+      selectedGroupSegments,
+      setSelectedGroupSegments,
+      addMode,
+      renameCollectionMode,
+      deleteCollectionMode,
     }),
-    [activeMode, availableModes, resolvedMode, selectedCollectionId]
+    [
+      activeMode,
+      availableModes,
+      resolvedMode,
+      selectedCollectionId,
+      setSelectedCollectionId,
+      selectedGroupSegments,
+      addMode,
+      renameCollectionMode,
+      deleteCollectionMode,
+    ]
   );
 
   return (
@@ -141,17 +246,4 @@ export function useTokenExplorer() {
   }
 
   return context;
-}
-
-export function isTokenExplorerModeActive(
-  mode: string,
-  activeMode: string | null,
-  resolvedMode: string | null,
-  availableModes: string[]
-) {
-  if (mode === "Default") {
-    return activeMode === null && availableModes.includes("Default");
-  }
-
-  return resolvedMode === mode;
 }

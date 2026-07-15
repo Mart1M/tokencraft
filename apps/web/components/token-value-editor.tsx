@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Link2, Link2Off } from "lucide-react";
 
 import { TokenAliasCombobox } from "@/components/token-alias-combobox";
 import { TokenColorPicker } from "@/components/token-color-picker";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { TokenAliasOption } from "@/lib/tokens/entries";
 import {
   getCompositeFieldsForType,
@@ -116,35 +119,69 @@ export function TokenValueEditor({
     (parsedRawValue === null ||
       (typeof parsedRawValue === "object" && !Array.isArray(parsedRawValue)));
 
+  const [autoOpenAlias, setAutoOpenAlias] = useState(false);
+
+  useEffect(() => {
+    if (autoOpenAlias) {
+      setAutoOpenAlias(false);
+    }
+  }, [autoOpenAlias]);
+
+  function switchToAlias() {
+    setAutoOpenAlias(true);
+    onValueKindChange("alias");
+  }
+
   if (valueKind === "alias") {
     return (
       <div className="space-y-2">
-        <TokenAliasCombobox
-          options={aliasOptions}
-          value={rawValue}
-          onValueChange={onRawValueChange}
-        />
-        <button
-          type="button"
-          className="text-xs text-muted-foreground underline-offset-4 hover:underline"
-          onClick={() => onValueKindChange("literal")}
-        >
-          Switch to literal value
-        </button>
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <TokenAliasCombobox
+              options={aliasOptions}
+              value={rawValue}
+              onValueChange={onRawValueChange}
+              defaultOpen={autoOpenAlias}
+            />
+          </div>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="shrink-0"
+                onClick={() => onValueKindChange("literal")}
+              >
+                <Link2Off className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              <p>Use a literal value instead</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Pick a token from any imported collection. The alias is stored as{" "}
+          <code className="rounded bg-muted px-1 py-0.5">{`{token.path}`}</code>.
+        </p>
       </div>
     );
   }
 
+  let literalField: React.ReactNode;
+
   if (type === "color") {
-    return <ColorFieldInput id={id} value={rawValue} onChange={onRawValueChange} />;
-  }
-
-  if (usesCompositeFields && type) {
-    return <CompositeValueFields type={type} rawValue={rawValue} onChange={onRawValueChange} />;
-  }
-
-  if (compositeArray || (type && isCompositeTokenType(type) && rawValue.trim().startsWith("["))) {
-    return (
+    literalField = <ColorFieldInput id={id} value={rawValue} onChange={onRawValueChange} />;
+  } else if (usesCompositeFields && type) {
+    literalField = (
+      <CompositeValueFields type={type} rawValue={rawValue} onChange={onRawValueChange} />
+    );
+  } else if (
+    compositeArray ||
+    (type && isCompositeTokenType(type) && rawValue.trim().startsWith("["))
+  ) {
+    literalField = (
       <Textarea
         id={id}
         value={rawValue}
@@ -153,15 +190,37 @@ export function TokenValueEditor({
         placeholder='[{"offsetX":"0px","offsetY":"1px"}]'
       />
     );
+  } else {
+    literalField = (
+      <Input
+        id={id}
+        value={rawValue}
+        onChange={(event) => onRawValueChange(event.target.value)}
+        placeholder={formatScalarPlaceholder(type)}
+        className="font-mono"
+      />
+    );
   }
 
   return (
-    <Input
-      id={id}
-      value={rawValue}
-      onChange={(event) => onRawValueChange(event.target.value)}
-      placeholder={formatScalarPlaceholder(type)}
-      className="font-mono"
-    />
+    <div className="flex items-center gap-2">
+      <div className="min-w-0 flex-1">{literalField}</div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            className="shrink-0"
+            onClick={switchToAlias}
+          >
+            <Link2 className="size-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          <p>Reference another token</p>
+        </TooltipContent>
+      </Tooltip>
+    </div>
   );
 }

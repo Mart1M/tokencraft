@@ -4,7 +4,6 @@ import { GeistMono } from "geist/font/mono";
 import { Instrument_Serif } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
-import { NeonAuthProvider } from "@/components/neon-auth-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 const instrumentSerif = Instrument_Serif({
@@ -14,8 +13,8 @@ const instrumentSerif = Instrument_Serif({
 });
 
 export const metadata: Metadata = {
-  title: "TokenCraft Neo",
-  description: "Git-native design token management for design system teams"
+  title: "TokenCraft",
+  description: "A local-first design token editor for your project's *.tokens.json files"
 };
 
 export default function RootLayout({
@@ -26,9 +25,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`font-sans ${GeistSans.variable} ${GeistMono.variable} ${instrumentSerif.variable}`}>
-        <TooltipProvider>
-          <NeonAuthProvider>{children}</NeonAuthProvider>
-        </TooltipProvider>
+        <TooltipProvider>{children}</TooltipProvider>
         <Toaster richColors closeButton />
       </body>
     </html>

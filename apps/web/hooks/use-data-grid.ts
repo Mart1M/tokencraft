@@ -2436,7 +2436,14 @@ function useDataGrid<TData>({
       colSizes[`--col-${header.column.id}-size`] = header.column.getSize();
     }
     return colSizes;
-  }, [table.getState().columnSizingInfo, table.getState().columnSizing]);
+    // `columns` must stay a dependency: adding/removing columns at runtime
+    // (e.g. a new token mode column) changes `table.getFlatHeaders()` without
+    // necessarily touching `columnSizingInfo`/`columnSizing`, so without it
+    // the size vars for the new column are never emitted. That leaves its
+    // `width: calc(var(--col-x-size) * 1px)` unresolved (NaN), so the browser
+    // falls back to auto-sizing from content - shrinking empty "—" cells far
+    // below their header's width instead of matching it.
+  }, [table.getState().columnSizingInfo, table.getState().columnSizing, columns]);
 
   const isFirefox = React.useSyncExternalStore(
     React.useCallback(() => () => {}, []),

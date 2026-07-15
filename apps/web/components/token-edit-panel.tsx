@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { RotateCcw, Trash2, X } from "lucide-react";
 
 import { TokenExtensionsEditor } from "@/components/token-extensions-editor";
+import { TokenTypeCombobox } from "@/components/token-type-combobox";
 import { TokenValueEditor } from "@/components/token-value-editor";
 import { useTokenExplorer } from "@/components/token-explorer-provider";
 import { Badge } from "@/components/ui/badge";
@@ -16,16 +17,16 @@ import {
   buildCreateDraft,
   buildDraftFromRow,
   buildPendingTokenId,
-  formatDraftValue,
+  getDraftKey,
+  getDraftsForToken,
   getEditableRawValue,
   getEditableTokenMetadata,
-  mergeDraftIntoDisplayValue,
+  resolveStorageMode,
   type TokenDraft,
   type TokenValueKind,
 } from "@/lib/tokens/draft-utils";
 import type { ImportedTokenRow } from "@/lib/tokens/entries";
 import { getTokenAliasOptions } from "@/lib/tokens/entries";
-import { buildTokenDisplayValue, resolveModeKey } from "@/lib/tokens/display";
 import { isCompositeTokenType } from "@/lib/tokens/composite-fields";
 import type { TokenExtensions } from "@/lib/tokens/token-metadata";
 import { getDefaultLiteralValueForType } from "@/lib/tokens/value-editor";
@@ -65,6 +66,26 @@ function getPendingTokenEdit(
   };
 }
 
+type PendingTokenMetadata = {
+  description: string;
+  extensions: TokenExtensions | undefined;
+};
+
+function buildPendingEditsByMode(
+  token: ImportedTokenRow,
+  modes: string[],
+  tokenDrafts: TokenDraft[],
+): Record<string, PendingTokenEdit> {
+  return Object.fromEntries(
+    modes.map((mode) => {
+      const storageMode = resolveStorageMode(token, mode);
+      const draft = tokenDrafts.find((entry) => entry.mode === storageMode);
+
+      return [mode, getPendingTokenEdit(token, storageMode, draft)];
+    }),
+  );
+}
+
 function pendingEditsEqual(left: PendingTokenEdit, right: PendingTokenEdit) {
   return (
     left.valueKind === right.valueKind &&
@@ -75,45 +96,21 @@ function pendingEditsEqual(left: PendingTokenEdit, right: PendingTokenEdit) {
   );
 }
 
-function TokenValuePreview({
-  token,
-  mode,
-  draft,
-}: {
-  token: ImportedTokenRow;
-  mode: string | null;
-  draft?: ReturnType<typeof useTokenDraftStore.getState>["drafts"][string];
-}) {
-  const display = mergeDraftIntoDisplayValue(token, mode, draft);
-
-  if (display.kind === "alias") {
-    return (
-      <Badge variant="secondary" className="font-mono text-xs font-normal">
-        {display.aliasPath ?? display.text}
-      </Badge>
-    );
-  }
-
-  if (display.kind === "color" && display.color) {
-    return (
-      <span className="inline-flex items-center gap-2">
-        <span
-          className="inline-block h-5 w-5 rounded border border-border"
-          style={{ backgroundColor: display.color }}
-        />
-        <span className="font-mono text-sm">{display.text}</span>
-      </span>
-    );
-  }
-
-  return <span className="font-mono text-sm">{display.text}</span>;
+function metadataEqual(left: PendingTokenMetadata, right: PendingTokenMetadata) {
+  return (
+    left.description === right.description &&
+    serializeExtensions(left.extensions) ===
+      serializeExtensions(right.extensions)
+  );
 }
 
 export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
-  const { resolvedMode } = useTokenExplorer();
+  const { availableModes } = useTokenExplorer();
   const selectedTokenId = useTokenDraftStore((state) => state.selectedTokenId);
   const isPanelOpen = useTokenDraftStore((state) => state.isPanelOpen);
   const panelMode = useTokenDraftStore((state) => state.panelMode);
+  const panelEditScope = useTokenDraftStore((state) => state.panelEditScope);
+  const panelFocusMode = useTokenDraftStore((state) => state.panelFocusMode);
   const createContext = useTokenDraftStore((state) => state.createContext);
   const drafts = useTokenDraftStore((state) => state.drafts);
   const closePanel = useTokenDraftStore((state) => state.closePanel);
@@ -135,60 +132,88 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
     description: "",
     extensions: undefined,
   });
+  const [pendingEditsByMode, setPendingEditsByMode] = useState<
+    Record<string, PendingTokenEdit>
+  >({});
+  const [pendingMetadata, setPendingMetadata] = useState<PendingTokenMetadata>({
+    description: "",
+    extensions: undefined,
+  });
 
   const token = useMemo(
     () => tokens.find((row) => row.id === selectedTokenId) ?? null,
     [selectedTokenId, tokens],
   );
 
-  const createPreviewRow = useMemo(() => {
-    if (!createContext || !createPath.trim()) {
-      return null;
-    }
-
-    return {
-      id: buildPendingTokenId(createContext.fileId, createPath.trim()),
-      fileId: createContext.fileId,
-      sourcePath: createContext.sourcePath,
-      collectionName: createContext.collectionName,
-      name: createPath.trim(),
-      type: createType,
-      value: createRawValue,
-      display: buildTokenDisplayValue(
-        formatDraftValue({
-          valueKind: createValueKind,
-          rawValue: createRawValue,
-          type: createType,
-        }),
-        createType,
-      ),
-    } satisfies ImportedTokenRow;
-  }, [createContext, createPath, createRawValue, createType, createValueKind]);
+  const tokenDrafts = useMemo(
+    () => (selectedTokenId ? getDraftsForToken(drafts, selectedTokenId) : []),
+    [drafts, selectedTokenId],
+  );
 
   const activeMode =
-    token?.modes && resolvedMode
-      ? resolveModeKey(token.modes, resolvedMode)
+    panelEditScope === "single" && panelFocusMode && token
+      ? resolveStorageMode(token, panelFocusMode)
       : null;
-  const draft = selectedTokenId ? drafts[selectedTokenId] : undefined;
-  const savedEdit = token
-    ? getPendingTokenEdit(token, activeMode, draft)
-    : null;
+
+  const draft =
+    panelEditScope === "single" && selectedTokenId
+      ? drafts[
+          getDraftKey({
+            tokenId: selectedTokenId,
+            mode: activeMode,
+          })
+        ]
+      : tokenDrafts.find((entry) => entry.operation === "delete");
+
+  const savedEdit =
+    panelEditScope === "single" && token
+      ? getPendingTokenEdit(token, activeMode, draft)
+      : null;
+
+  const savedEditsByMode = useMemo(
+    () =>
+      token
+        ? buildPendingEditsByMode(token, availableModes, tokenDrafts)
+        : {},
+    [token, availableModes, tokenDrafts],
+  );
+
+  const savedMetadata = useMemo(
+    () =>
+      token
+        ? getEditableTokenMetadata(token, tokenDrafts[0])
+        : { description: "", extensions: undefined },
+    [token, tokenDrafts],
+  );
+
+  const hasPendingValueChanges = !token
+    ? false
+    : panelEditScope === "all"
+      ? availableModes.some((mode) => {
+          const saved = savedEditsByMode[mode];
+          const pending =
+            pendingEditsByMode[mode] ??
+            getPendingTokenEdit(token, resolveStorageMode(token, mode));
+
+          return saved
+            ? pending.valueKind !== saved.valueKind ||
+                pending.rawValue !== saved.rawValue
+            : Boolean(pending.rawValue);
+        })
+      : savedEdit !== null &&
+        (pendingEdit.valueKind !== savedEdit.valueKind ||
+          pendingEdit.rawValue !== savedEdit.rawValue);
+
+  const hasPendingMetadataChanges = !metadataEqual(
+    pendingMetadata,
+    savedMetadata,
+  );
+
   const hasPendingChanges =
-    savedEdit !== null && !pendingEditsEqual(pendingEdit, savedEdit);
-  const previewDraft =
-    token && (hasPendingChanges || draft)
-      ? buildDraftFromRow(
-          token,
-          activeMode,
-          pendingEdit.valueKind,
-          pendingEdit.rawValue,
-          draft?.operation === "delete" ? "delete" : "update",
-          {
-            description: pendingEdit.description,
-            extensions: pendingEdit.extensions,
-          },
-        )
-      : draft;
+    panelEditScope === "all"
+      ? hasPendingValueChanges || hasPendingMetadataChanges
+      : hasPendingValueChanges || hasPendingMetadataChanges;
+
   const aliasOptions = useMemo(
     () => getTokenAliasOptions(tokens, token?.id),
     [tokens, token?.id],
@@ -210,8 +235,27 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
       return;
     }
 
+    if (panelEditScope === "all") {
+      setPendingEditsByMode(
+        buildPendingEditsByMode(token, availableModes, tokenDrafts),
+      );
+      setPendingMetadata(getEditableTokenMetadata(token, tokenDrafts[0]));
+      return;
+    }
+
     setPendingEdit(getPendingTokenEdit(token, activeMode, draft));
-  }, [token?.id, activeMode, panelMode, selectedTokenId]);
+    setPendingMetadata(getEditableTokenMetadata(token, draft));
+  }, [
+    token?.id,
+    activeMode,
+    panelMode,
+    panelEditScope,
+    panelFocusMode,
+    selectedTokenId,
+    draft,
+    tokenDrafts,
+    availableModes,
+  ]);
 
   useEffect(() => {
     if (panelMode !== "create" || createValueKind !== "literal") {
@@ -295,38 +339,14 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
             <label className="text-sm font-medium" htmlFor="create-token-type">
               Type
             </label>
-            <Input
+            <TokenTypeCombobox
               id="create-token-type"
               value={createType}
-              onChange={(event) => setCreateType(event.target.value)}
-              placeholder="color"
-              className="font-mono"
+              onValueChange={setCreateType}
             />
           </div>
 
           <Separator />
-
-          <div className="space-y-3">
-            <p className="text-sm font-medium">Value type</p>
-            <div className="inline-flex rounded-lg border p-1">
-              <Button
-                type="button"
-                size="sm"
-                variant={createValueKind === "literal" ? "secondary" : "ghost"}
-                onClick={() => setCreateValueKind("literal")}
-              >
-                Literal
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant={createValueKind === "alias" ? "secondary" : "ghost"}
-                onClick={() => setCreateValueKind("alias")}
-              >
-                Alias
-              </Button>
-            </div>
-          </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium" htmlFor="create-token-value">
@@ -346,13 +366,6 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
               onRawValueChange={setCreateRawValue}
             />
           </div>
-
-          {createPreviewRow ? (
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Preview</p>
-              <TokenValuePreview token={createPreviewRow} mode={null} />
-            </div>
-          ) : null}
 
           <Separator />
 
@@ -420,50 +433,129 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
   }
 
   function applyChanges() {
-    if (!hasPendingChanges) {
+    if (!hasPendingChanges || !token) {
       return;
     }
 
-    setDraft(
-      buildDraftFromRow(
-        token!,
-        activeMode,
-        pendingEdit.valueKind,
-        pendingEdit.rawValue,
-        "update",
-        {
-          description: pendingEdit.description,
-          extensions: pendingEdit.extensions,
-        },
-      ),
+    const metadata = {
+      description: pendingMetadata.description,
+      extensions: pendingMetadata.extensions,
+    };
+
+    if (panelEditScope === "all") {
+      let appliedAnyValue = false;
+
+      for (const mode of availableModes) {
+        const saved = savedEditsByMode[mode];
+        const pending =
+          pendingEditsByMode[mode] ??
+          getPendingTokenEdit(token, resolveStorageMode(token, mode));
+
+        if (
+          pending.valueKind !== saved.valueKind ||
+          pending.rawValue !== saved.rawValue
+        ) {
+          appliedAnyValue = true;
+          setDraft(
+            buildDraftFromRow(
+              token,
+              resolveStorageMode(token, mode),
+              pending.valueKind,
+              pending.rawValue,
+              "update",
+              metadata,
+            ),
+          );
+        }
+      }
+
+      if (hasPendingMetadataChanges && !appliedAnyValue) {
+        const fallbackMode = availableModes[0];
+
+        if (fallbackMode) {
+          const pending =
+            pendingEditsByMode[fallbackMode] ??
+            getPendingTokenEdit(token, resolveStorageMode(token, fallbackMode));
+
+          setDraft(
+            buildDraftFromRow(
+              token,
+              resolveStorageMode(token, fallbackMode),
+              pending.valueKind,
+              pending.rawValue,
+              "update",
+              metadata,
+            ),
+          );
+        }
+      }
+
+      return;
+    }
+
+    const nextDraft = buildDraftFromRow(
+      token,
+      activeMode,
+      pendingEdit.valueKind,
+      pendingEdit.rawValue,
+      "update",
+      metadata,
     );
+    setDraft(nextDraft);
+    setPendingEdit(getPendingTokenEdit(token, activeMode, nextDraft));
+    setPendingMetadata(metadata);
   }
 
   function discardChanges() {
-    if (selectedTokenId && draft) {
+    if (!token) {
+      return;
+    }
+
+    if (selectedTokenId && tokenDrafts.length > 0) {
       clearDraft(selectedTokenId);
     }
 
-    setPendingEdit(getPendingTokenEdit(token!, activeMode, undefined));
+    if (panelEditScope === "all") {
+      setPendingEditsByMode(
+        buildPendingEditsByMode(token, availableModes, []),
+      );
+      setPendingMetadata(getEditableTokenMetadata(token, undefined));
+      return;
+    }
+
+    setPendingEdit(getPendingTokenEdit(token, activeMode, undefined));
+    setPendingMetadata(getEditableTokenMetadata(token, undefined));
   }
 
   function deleteToken() {
-    if (draft?.operation === "create") {
-      clearDraft(token!.id);
+    if (!token) {
+      return;
+    }
+
+    const deleteSource =
+      panelEditScope === "single" && savedEdit
+        ? savedEdit
+        : savedEditsByMode[availableModes[0] ?? ""] ??
+          getPendingTokenEdit(token, null);
+
+    if (tokenDrafts.some((entry) => entry.operation === "create")) {
+      clearDraft(token.id);
       closePanel();
       return;
     }
 
     setDraft({
-      tokenId: token!.id,
-      fileId: token!.fileId,
-      path: token!.name,
-      ...(token!.type ? { type: token!.type } : {}),
+      tokenId: token.id,
+      fileId: token.fileId,
+      path: token.name,
+      ...(token.type ? { type: token.type } : {}),
       mode: activeMode,
-      valueKind: savedEdit!.valueKind,
-      rawValue: savedEdit!.rawValue,
-      description: savedEdit!.description,
-      ...(savedEdit!.extensions ? { extensions: savedEdit!.extensions } : {}),
+      valueKind: deleteSource.valueKind,
+      rawValue: deleteSource.rawValue,
+      description: pendingMetadata.description,
+      ...(pendingMetadata.extensions
+        ? { extensions: pendingMetadata.extensions }
+        : {}),
       operation: "delete",
     });
     closePanel();
@@ -476,14 +568,14 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
           <p className="text-xs uppercase tracking-wide text-muted-foreground">
             Token
           </p>
-          <h2 className="truncate font-mono text-sm font-medium">
+          <h2 className="whitespace-normal wrap-break-word font-mono text-sm font-medium">
             {token.name}
           </h2>
           <div className="flex flex-wrap items-center gap-2">
             {token.type ? <Badge variant="outline">{token.type}</Badge> : null}
-            {activeMode ? (
+            {panelEditScope === "single" && panelFocusMode ? (
               <Badge variant="secondary" className="capitalize">
-                {activeMode}
+                {panelFocusMode}
               </Badge>
             ) : null}
             {draft?.operation === "delete" ? (
@@ -501,88 +593,69 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
       <div className="flex-1 space-y-6 overflow-y-auto px-4 py-4">
         {draft?.operation !== "delete" ? (
           <>
-            <div className="space-y-2">
-              <p className="text-sm font-medium">Preview</p>
-              <TokenValuePreview
-                token={token}
-                mode={activeMode}
-                draft={previewDraft}
-              />
-            </div>
+            {panelEditScope === "all" ? (
+              <div className="space-y-4">
+                {availableModes.map((mode) => {
+                  const pending =
+                    pendingEditsByMode[mode] ??
+                    getPendingTokenEdit(token, resolveStorageMode(token, mode));
 
-            <Separator />
-
-            <div className="space-y-3">
-              <p className="text-sm font-medium">Value type</p>
-              <div className="inline-flex rounded-lg border p-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={
-                    pendingEdit.valueKind === "literal" ? "secondary" : "ghost"
-                  }
-                  onClick={() =>
-                    setPendingEdit((current) => ({
-                      ...current,
-                      valueKind: "literal",
-                    }))
-                  }
-                >
-                  Literal
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={
-                    pendingEdit.valueKind === "alias" ? "secondary" : "ghost"
-                  }
-                  onClick={() =>
-                    setPendingEdit((current) => ({
-                      ...current,
-                      valueKind: "alias",
-                    }))
-                  }
-                >
-                  Alias
-                </Button>
+                  return (
+                    <div key={mode} className="space-y-2">
+                      <label
+                        className="text-sm font-medium"
+                        htmlFor={`token-value-input-${mode}`}
+                      >
+                        {pending.valueKind === "alias"
+                          ? "Alias path"
+                          : token.type && isCompositeTokenType(token.type)
+                            ? "Value fields"
+                            : "Value"}
+                        <span className="ml-1.5 font-normal capitalize text-muted-foreground">
+                          ({mode})
+                        </span>
+                      </label>
+                      <TokenValueEditor
+                        id={`token-value-input-${mode}`}
+                        type={token.type}
+                        valueKind={pending.valueKind}
+                        rawValue={pending.rawValue}
+                        raw={token.raw}
+                        aliasOptions={aliasOptions}
+                        onValueKindChange={(valueKind) =>
+                          setPendingEditsByMode((current) => ({
+                            ...current,
+                            [mode]: { ...pending, valueKind },
+                          }))
+                        }
+                        onRawValueChange={(rawValue) =>
+                          setPendingEditsByMode((current) => ({
+                            ...current,
+                            [mode]: { ...pending, rawValue },
+                          }))
+                        }
+                      />
+                    </div>
+                  );
+                })}
               </div>
-            </div>
-
-            <div className="space-y-2">
-              <label
-                className="text-sm font-medium"
-                htmlFor="token-value-input"
-              >
-                {pendingEdit.valueKind === "alias"
-                  ? "Alias path"
-                  : token.type && isCompositeTokenType(token.type)
-                    ? "Value fields"
-                    : "Value"}
-              </label>
-              {pendingEdit.valueKind === "alias" ? (
-                <div className="space-y-2">
-                  <TokenValueEditor
-                    id="token-value-input"
-                    type={token.type}
-                    valueKind={pendingEdit.valueKind}
-                    rawValue={pendingEdit.rawValue}
-                    raw={token.raw}
-                    aliasOptions={aliasOptions}
-                    onValueKindChange={(valueKind) =>
-                      setPendingEdit((current) => ({ ...current, valueKind }))
-                    }
-                    onRawValueChange={(rawValue) =>
-                      setPendingEdit((current) => ({ ...current, rawValue }))
-                    }
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Pick a token from any imported collection. The alias is
-                    stored as{" "}
-                    <code className="rounded bg-muted px-1 py-0.5">{`{token.path}`}</code>
-                    .
-                  </p>
-                </div>
-              ) : (
+            ) : (
+              <div className="space-y-2">
+                <label
+                  className="text-sm font-medium"
+                  htmlFor="token-value-input"
+                >
+                  {pendingEdit.valueKind === "alias"
+                    ? "Alias path"
+                    : token.type && isCompositeTokenType(token.type)
+                      ? "Value fields"
+                      : "Value"}
+                  {panelFocusMode ? (
+                    <span className="ml-1.5 font-normal capitalize text-muted-foreground">
+                      ({panelFocusMode})
+                    </span>
+                  ) : null}
+                </label>
                 <TokenValueEditor
                   id="token-value-input"
                   type={token.type}
@@ -597,8 +670,8 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
                     setPendingEdit((current) => ({ ...current, rawValue }))
                   }
                 />
-              )}
-            </div>
+              </div>
+            )}
 
             <Separator />
 
@@ -611,9 +684,9 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
               </label>
               <Textarea
                 id="token-description"
-                value={pendingEdit.description}
+                value={pendingMetadata.description}
                 onChange={(event) =>
-                  setPendingEdit((current) => ({
+                  setPendingMetadata((current) => ({
                     ...current,
                     description: event.target.value,
                   }))
@@ -635,17 +708,17 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
                 </p>
               </div>
               <TokenExtensionsEditor
-                value={pendingEdit.extensions}
+                value={pendingMetadata.extensions}
                 onChange={(extensions) =>
-                  setPendingEdit((current) => ({ ...current, extensions }))
+                  setPendingMetadata((current) => ({ ...current, extensions }))
                 }
               />
             </div>
           </>
         ) : (
           <p className="text-sm text-muted-foreground">
-            This token is marked for deletion. Commit to save, then push to
-            remove it from GitHub.
+            This token is marked for deletion. Apply to save, then it will be
+            removed from the source file.
           </p>
         )}
 
@@ -666,7 +739,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
             Apply
           </Button>
         ) : null}
-        {hasPendingChanges || draft ? (
+        {hasPendingChanges || tokenDrafts.length > 0 ? (
           <Button
             type="button"
             variant="outline"
@@ -685,7 +758,21 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
             onClick={() => {
               if (selectedTokenId) {
                 clearDraft(selectedTokenId);
-                setPendingEdit(getPendingTokenEdit(token, activeMode, undefined));
+                if (panelEditScope === "all") {
+                  setPendingEditsByMode(
+                    buildPendingEditsByMode(token, availableModes, []),
+                  );
+                  setPendingMetadata(
+                    getEditableTokenMetadata(token, undefined),
+                  );
+                } else {
+                  setPendingEdit(
+                    getPendingTokenEdit(token, activeMode, undefined),
+                  );
+                  setPendingMetadata(
+                    getEditableTokenMetadata(token, undefined),
+                  );
+                }
               }
             }}
           >
@@ -697,9 +784,10 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
             type="button"
             variant="outline"
             size="sm"
+            className="text-destructive hover:text-destructive ml-auto"
             onClick={deleteToken}
           >
-            <Trash2 size={14} />
+            <Trash2 className="text-destructive" size={14} />
             Delete token
           </Button>
         )}

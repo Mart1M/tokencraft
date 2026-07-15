@@ -3,10 +3,10 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { inspectTokenJson } from "@/lib/github/token-scan";
+import { inspectTokenJson } from "@/lib/tokens/fs";
 import { setTokenAtPath } from "@/lib/tokens/json-patch";
 import { parseTokenFileMetadata } from "@/lib/tokens/flatten";
-import { entryToRawValue } from "@/lib/tokens/serialize";
+import { buildRawValueFromDraftInput, entryToRawValue } from "@/lib/tokens/serialize";
 
 const dtcgExample = JSON.parse(
   readFileSync(resolve(__dirname, "fixtures/dtcg-example.json"), "utf8")
@@ -61,6 +61,57 @@ describe("entryToRawValue", () => {
     ).toEqual({
       light: "{color.core.gray.50}",
       dark: "{color.core.gray.900}",
+    });
+  });
+});
+
+describe("buildRawValueFromDraftInput", () => {
+  it("seeds a modes map when adding a mode to a token that only has a flat value", () => {
+    const current = {
+      path: "color.primary.500",
+      type: "color",
+      value: "#0066ff",
+      raw: "#0066ff",
+    };
+
+    expect(buildRawValueFromDraftInput(current, "#111111", "Dark")).toEqual({
+      Default: "#0066ff",
+      Dark: "#111111",
+    });
+  });
+
+  it("adds a brand-new mode key to a token that already has other modes", () => {
+    const current = {
+      path: "color.semantic.background.default",
+      type: "color",
+      value: "light: #ffffff · dark: #000000",
+      modes: {
+        light: { kind: "color" as const, text: "#ffffff", color: "#ffffff" },
+        dark: { kind: "color" as const, text: "#000000", color: "#000000" },
+      },
+    };
+
+    expect(buildRawValueFromDraftInput(current, "#ff00ff", "contrast")).toEqual({
+      light: "#ffffff",
+      dark: "#000000",
+      contrast: "#ff00ff",
+    });
+  });
+
+  it("updates an existing mode value without dropping the others", () => {
+    const current = {
+      path: "color.semantic.background.default",
+      type: "color",
+      value: "light: #ffffff · dark: #000000",
+      modes: {
+        light: { kind: "color" as const, text: "#ffffff", color: "#ffffff" },
+        dark: { kind: "color" as const, text: "#000000", color: "#000000" },
+      },
+    };
+
+    expect(buildRawValueFromDraftInput(current, "#123456", "dark")).toEqual({
+      light: "#ffffff",
+      dark: "#123456",
     });
   });
 });

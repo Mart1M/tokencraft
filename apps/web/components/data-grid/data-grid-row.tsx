@@ -270,7 +270,7 @@ function DataGridRowImpl<TData>({
             data-highlighted={isCellFocused ? "" : undefined}
             data-slot="grid-cell"
             tabIndex={-1}
-            className={cn({
+            className={cn("min-w-0", {
               grow: stretchColumns && columnId !== "select",
               "border-e": showEndBorder && columnId !== "select",
               "border-s": showStartBorder && columnId !== "select",
@@ -280,7 +280,8 @@ function DataGridRowImpl<TData>({
               width: `calc(var(--col-${columnId}-size) * 1px)`,
             }}
           >
-            {typeof cell.column.columnDef.header === "function" ? (
+            {!cell.column.columnDef.meta?.cell &&
+            typeof cell.column.columnDef.header === "function" ? (
               <div
                 className={cn("size-full px-3 py-1.5", {
                   "bg-primary/5": isRowSelected,

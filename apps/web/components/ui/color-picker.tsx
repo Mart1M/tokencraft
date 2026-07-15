@@ -423,6 +423,7 @@ interface Store {
   getState: () => StoreState;
   setColor: (value: ColorValue) => void;
   setHsv: (value: HSVColorValue) => void;
+  syncColorFromProp: (value: ColorValue, hsv: HSVColorValue) => void;
   setOpen: (value: boolean) => void;
   setFormat: (value: ColorFormat) => void;
   notify: () => void;
@@ -562,6 +563,24 @@ function ColorPicker(props: ColorPickerProps) {
 
         store.notify();
       },
+      syncColorFromProp: (value: ColorValue, hsv: HSVColorValue) => {
+        // Mirrors `setColor`/`setHsv` but never calls `onValueChange`: this is
+        // used to reflect an externally-controlled `value` prop change into
+        // the internal store, not a user-driven edit. Calling `onValueChange`
+        // here would echo the value straight back to the consumer's state,
+        // racing (and sometimes losing to) whatever else set that prop in the
+        // same render pass.
+        if (
+          Object.is(stateRef.current.color, value) &&
+          Object.is(stateRef.current.hsv, hsv)
+        ) {
+          return;
+        }
+
+        stateRef.current.color = value;
+        stateRef.current.hsv = hsv;
+        store.notify();
+      },
       setOpen: (value: boolean) => {
         if (Object.is(stateRef.current.open, value)) return;
 
@@ -656,8 +675,7 @@ function ColorPickerImpl(props: ColorPickerImplProps) {
       const color =
         parseColorString(valueProp) ?? hexToRgb(valueProp, currentState.color.a);
       const hsv = rgbToHsv(color);
-      store.setColor(color);
-      store.setHsv(hsv);
+      store.syncColorFromProp(color, hsv);
     }
   }, [valueProp]);
 
@@ -1240,7 +1258,7 @@ function ColorPickerInput(props: ColorPickerInputProps) {
 }
 
 const inputGroupItemVariants = cva(
-  "h-8 [-moz-appearance:textfield] focus-visible:z-10 focus-visible:ring-1 [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none",
+  "h-9 [-moz-appearance:textfield] focus-visible:z-10 focus-visible:ring-1 [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none",
   {
     variants: {
       position: {
@@ -1268,7 +1286,7 @@ function InputGroupItem({
   return (
     <Input
       data-slot="color-picker-input"
-      className={cn(inputGroupItemVariants({ position, className }))}
+      className={cn(inputGroupItemVariants({ position }), className)}
       {...props}
     />
   );
@@ -1293,16 +1311,46 @@ function HexInput(props: FormatInputProps) {
   const hexValue = rgbToHex(color);
   const alphaValue = Math.round((color?.a ?? 1) * 100);
 
+  // The input can't be a plain controlled input mirroring `hexValue`: while
+  // typing, intermediate strings (e.g. "#f", "#ff00f") don't parse to a valid
+  // color, so if we always rendered `hexValue` the field would snap back to
+  // the previous color on every keystroke and the user could never finish
+  // typing a new one. Instead we track the raw text locally and only
+  // resync it from `hexValue` when the field isn't focused (i.e. the color
+  // changed from elsewhere, like the picker area or a prop update).
+  const [hexText, setHexText] = React.useState(hexValue);
+  const isEditingRef = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!isEditingRef.current) {
+      setHexText(hexValue);
+    }
+  }, [hexValue]);
+
   const onHexChange = React.useCallback(
     (event: React.ChangeEvent<InputElement>) => {
       const value = event.target.value;
-      const parsedColor = parseColorString(value);
+      setHexText(value);
+
+      const normalized = value.startsWith("#") ? value : `#${value}`;
+      const parsedColor = parseColorString(normalized);
       if (parsedColor) {
         onColorChange({ ...parsedColor, a: color?.a ?? 1 });
       }
     },
     [color, onColorChange],
   );
+
+  const onHexFocus = React.useCallback(() => {
+    isEditingRef.current = true;
+  }, []);
+
+  const onHexBlur = React.useCallback(() => {
+    isEditingRef.current = false;
+    // Snap back to the last valid color if what's left in the field never
+    // resolved to one (e.g. the user left it half-typed or invalid).
+    setHexText(hexValue);
+  }, [hexValue]);
 
   const onAlphaChange = React.useCallback(
     (event: React.ChangeEvent<InputElement>) => {
@@ -1322,8 +1370,10 @@ function HexInput(props: FormatInputProps) {
         {...inputProps}
         placeholder="#000000"
         className={cn("font-mono", className)}
-        value={hexValue}
+        value={hexText}
         onChange={onHexChange}
+        onFocus={onHexFocus}
+        onBlur={onHexBlur}
         disabled={context.disabled}
       />
     );
@@ -1340,8 +1390,10 @@ function HexInput(props: FormatInputProps) {
         {...inputProps}
         placeholder="#000000"
         className="flex-1 font-mono"
-        value={hexValue}
+        value={hexText}
         onChange={onHexChange}
+        onFocus={onHexFocus}
+        onBlur={onHexBlur}
         disabled={context.disabled}
       />
       <InputGroupItem

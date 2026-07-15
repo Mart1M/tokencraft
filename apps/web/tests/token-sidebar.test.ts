@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getTokenSidebarCollections } from "@/lib/tokens/entries";
+import type { LocalTokenFile } from "@/lib/tokens/fs";
 
 describe("getTokenSidebarCollections", () => {
   it("detects light and dark modes from token file metadata", () => {
@@ -9,8 +10,8 @@ describe("getTokenSidebarCollections", () => {
         id: "file-1",
         collectionName: "design",
         path: "tokens/design.json",
-        syncStatus: "SYNCED",
-        pendingDelete: false,
+        format: "dtcg",
+        tokenCount: 2,
         metadata: {
           topLevelKeys: ["color"],
           tokens: [
@@ -39,7 +40,7 @@ describe("getTokenSidebarCollections", () => {
             },
           ],
         },
-      } as never,
+      } satisfies LocalTokenFile,
     ]);
 
     expect(collections).toEqual([
@@ -47,7 +48,6 @@ describe("getTokenSidebarCollections", () => {
         id: "file-1",
         name: "design",
         modes: ["light", "dark"],
-        syncStatus: "SYNCED",
         path: "tokens/design.json",
       },
     ]);
@@ -59,8 +59,8 @@ describe("getTokenSidebarCollections", () => {
         id: "file-2",
         collectionName: "core",
         path: "tokens/core.json",
-        syncStatus: "SYNCED",
-        pendingDelete: false,
+        format: "dtcg",
+        tokenCount: 1,
         metadata: {
           topLevelKeys: ["spacing"],
           tokens: [
@@ -72,7 +72,7 @@ describe("getTokenSidebarCollections", () => {
             },
           ],
         },
-      } as never,
+      } satisfies LocalTokenFile,
     ]);
 
     expect(collections).toEqual([
@@ -80,9 +80,26 @@ describe("getTokenSidebarCollections", () => {
         id: "file-2",
         name: "core",
         modes: ["Default"],
-        syncStatus: "SYNCED",
         path: "tokens/core.json",
       },
     ]);
+  });
+
+  it("marks a collection pending delete when its id is staged for removal", () => {
+    const collections = getTokenSidebarCollections(
+      [
+        {
+          id: "file-3",
+          collectionName: "core",
+          path: "tokens/core.json",
+          format: "dtcg",
+          tokenCount: 0,
+          metadata: { topLevelKeys: [], tokens: [] },
+        } satisfies LocalTokenFile,
+      ],
+      ["file-3"]
+    );
+
+    expect(collections[0]?.pendingDelete).toBe(true);
   });
 });

@@ -1,16 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useMemo } from "react";
-import { Plus } from "lucide-react";
 
 import { useTokenExplorer } from "@/components/token-explorer-provider";
 import { TokensExplorerDataGrid } from "@/components/tokens-explorer-data-grid";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { useCollectionModeOperations } from "@/hooks/use-collection-mode-operations";
 import type { ImportedTokenRow } from "@/lib/tokens/entries";
-import { buildPendingTokenId } from "@/lib/tokens/draft-utils";
 import { useTokenDraftStore } from "@/lib/tokens/draft-store";
+import { getTokenGroupSegments, tokenMatchesGroup } from "@/lib/tokens/token-tree";
 
 function buildCreatePreviewRow(
   draft: NonNullable<
@@ -33,26 +30,19 @@ function buildCreatePreviewRow(
 
 export function TokensExplorerTable({
   tokens,
-  settingsHref,
-  collections,
 }: {
   tokens: ImportedTokenRow[];
-  settingsHref: string;
-  collections: Array<{ id: string; name: string; path: string }>;
 }) {
-  const { availableModes, resolvedMode, setActiveMode, selectedCollectionId } =
-    useTokenExplorer();
+  const {
+    availableModes,
+    selectedCollectionId,
+    selectedGroupSegments,
+    addMode,
+  } = useTokenExplorer();
+  const { renameMode, deleteMode, canDeleteMode } = useCollectionModeOperations();
   const drafts = useTokenDraftStore((state) => state.drafts);
   const openToken = useTokenDraftStore((state) => state.openToken);
-  const openCreateToken = useTokenDraftStore((state) => state.openCreateToken);
   const selectedTokenId = useTokenDraftStore((state) => state.selectedTokenId);
-  const pendingCollectionDeletes = useTokenDraftStore(
-    (state) => state.pendingCollectionDeletes,
-  );
-
-  const selectedCollection = collections.find(
-    (collection) => collection.id === selectedCollectionId,
-  );
 
   const collectionTokens = useMemo(() => {
     if (!selectedCollectionId) {
@@ -61,6 +51,20 @@ export function TokensExplorerTable({
 
     return tokens.filter((token) => token.fileId === selectedCollectionId);
   }, [tokens, selectedCollectionId]);
+
+  const groupFilteredTokens = useMemo(() => {
+    if (!selectedGroupSegments) {
+      return collectionTokens;
+    }
+
+    if (selectedGroupSegments.length === 0) {
+      return collectionTokens.filter(
+        (token) => getTokenGroupSegments(token.name).length === 0
+      );
+    }
+
+    return collectionTokens.filter((token) => tokenMatchesGroup(token, selectedGroupSegments));
+  }, [collectionTokens, selectedGroupSegments]);
 
   const createDrafts = useMemo(
     () =>
@@ -76,8 +80,8 @@ export function TokensExplorerTable({
     const previewRows = createDrafts.map((draft) =>
       buildCreatePreviewRow(draft, tokens),
     );
-    return [...collectionTokens, ...previewRows];
-  }, [collectionTokens, createDrafts, tokens]);
+    return [...groupFilteredTokens, ...previewRows];
+  }, [groupFilteredTokens, createDrafts, tokens]);
 
   const handleTokenRowActivate = useCallback(
     (rowId: string) => openToken(rowId),
@@ -86,48 +90,6 @@ export function TokensExplorerTable({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-4">
-      <div className="flex shrink-0 flex-wrap items-center gap-3 px-8">
-        {availableModes.length > 0 ? (
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">Mode</span>
-            <div className="inline-flex items-center gap-1 rounded-lg border p-1">
-              {availableModes.map((mode) => (
-                <Button
-                  key={mode}
-                  type="button"
-                  size="sm"
-                  variant={resolvedMode === mode ? "secondary" : "ghost"}
-                  className="h-7 px-3 capitalize"
-                  onClick={() => setActiveMode(mode)}
-                >
-                  {mode}
-                </Button>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        <div className="ml-auto flex items-center gap-2">
-          {selectedCollection &&
-          !pendingCollectionDeletes.includes(selectedCollection.id) ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="default"
-              onClick={() =>
-                openCreateToken({
-                  fileId: selectedCollection.id,
-                  collectionName: selectedCollection.name,
-                  sourcePath: selectedCollection.path,
-                })
-              }
-            >
-              <Plus size={14} />
-              Add token
-            </Button>
-          ) : null}
-        </div>
-      </div>
-
       <div className="flex min-h-0 flex-1 w-full flex-col">
         {!selectedCollectionId ? null : visibleTokens.length === 0 ? (
           <div className="flex h-full min-h-[240px] flex-1 items-center justify-center px-4 text-center text-sm text-muted-foreground">
@@ -136,15 +98,18 @@ export function TokensExplorerTable({
         ) : (
           <TokensExplorerDataGrid
             rows={visibleTokens}
-            resolvedMode={resolvedMode}
+            availableModes={availableModes}
             drafts={drafts}
             selectedTokenId={selectedTokenId}
             onTokenRowActivate={handleTokenRowActivate}
+            onAddMode={addMode}
+            showAddModeControl={Boolean(selectedCollectionId)}
+            onRenameMode={renameMode}
+            onDeleteMode={deleteMode}
+            canDeleteMode={canDeleteMode}
           />
         )}
       </div>
     </div>
   );
 }
-
-export { buildPendingTokenId };

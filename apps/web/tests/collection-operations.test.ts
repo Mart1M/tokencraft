@@ -1,64 +1,113 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
-function normalizeCollectionPath(path: string) {
-  return path.trim().replace(/^\/+/, "");
-}
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-function validateCollectionPath(path: string) {
-  const normalized = normalizeCollectionPath(path);
+import { TOKENCRAFT_CONFIG_FILENAME } from "@/lib/tokencraft/config";
+import { createTokenFile, WorkspaceFsError } from "@/lib/tokens/fs";
 
-  if (!normalized) {
-    throw new Error("Collection path is required.");
-  }
+describe("createTokenFile", () => {
+  let rootPath: string;
 
-  if (!normalized.toLowerCase().endsWith(".json")) {
-    throw new Error("Collection path must end with .json.");
-  }
-
-  if (normalized.includes("..")) {
-    throw new Error("Collection path is invalid.");
-  }
-
-  return normalized;
-}
-
-function deriveCollectionName(path: string, displayName?: string) {
-  if (displayName?.trim()) {
-    return displayName.trim();
-  }
-
-  const filename = path.split("/").pop() ?? path;
-  return filename.replace(/\.json$/i, "");
-}
-
-describe("collection path validation", () => {
-  it("normalizes leading slashes", () => {
-    expect(validateCollectionPath("/tokens/brand.json")).toBe("tokens/brand.json");
+  beforeEach(() => {
+    rootPath = mkdtempSync(join(tmpdir(), "tokencraft-test-"));
   });
 
-  it("rejects non-json paths", () => {
-    expect(() => validateCollectionPath("tokens/brand")).toThrow(/\.json/);
+  afterEach(() => {
+    rmSync(rootPath, { recursive: true, force: true });
   });
 
-  it("derives a display name from the filename", () => {
-    expect(deriveCollectionName("tokens/brand.json")).toBe("brand");
-    expect(deriveCollectionName("tokens/brand.json", "Brand tokens")).toBe("Brand tokens");
+  it("creates a new empty token file on disk", async () => {
+    const file = await createTokenFile(rootPath, "tokens/brand.json");
+
+    expect(file.path).toBe("tokens/brand.json");
+    expect(file.collectionName).toBe("brand");
+
+    const content = await readFile(join(rootPath, "tokens/brand.json"), "utf8");
+    expect(content).toBe("{}\n");
   });
-});
 
-describe("collection delete behavior", () => {
-  it("marks synced collections for pending delete instead of immediate removal", () => {
-    type SyncStatus = "SYNCED" | "LOCAL";
+  it("rejects a path that already exists", async () => {
+    await createTokenFile(rootPath, "tokens/brand.json");
 
-    function deleteBehavior(syncStatus: SyncStatus) {
-      if (syncStatus === "LOCAL") {
-        return "deleted";
-      }
+    await expect(createTokenFile(rootPath, "tokens/brand.json")).rejects.toThrow(
+      "A collection already exists at this path."
+    );
+  });
 
-      return { syncStatus, pendingDelete: true };
-    }
+  it("rejects a non-json path", async () => {
+    await expect(createTokenFile(rootPath, "tokens/brand")).rejects.toThrow(WorkspaceFsError);
+  });
 
-    expect(deleteBehavior("SYNCED")).toEqual({ syncStatus: "SYNCED", pendingDelete: true });
-    expect(deleteBehavior("LOCAL")).toBe("deleted");
+  it("rejects a path that escapes the workspace root", async () => {
+    await expect(createTokenFile(rootPath, "../escape.json")).rejects.toThrow(WorkspaceFsError);
+  });
+
+  it("accepts a workspace root with a trailing slash (e.g. from a native folder picker)", async () => {
+    const file = await createTokenFile(`${rootPath}/`, "tokens/brand.json");
+
+    expect(file.path).toBe("tokens/brand.json");
+
+    const content = await readFile(join(rootPath, "tokens/brand.json"), "utf8");
+    expect(content).toBe("{}\n");
+  });
+
+  it("bootstraps tokencraft.config.json when the workspace has no config yet and the new file is a plain, empty .json (not *.tokens.json)", async () => {
+    const file = await createTokenFile(rootPath, "tokens/core.json");
+
+    expect(file.tokenCount).toBe(0);
+
+    const config = JSON.parse(
+      await readFile(join(rootPath, TOKENCRAFT_CONFIG_FILENAME), "utf8")
+    );
+
+    expect(config.files).toEqual(["tokens/core.json"]);
+  });
+
+  it("registers the new file in an existing tokencraft.config.json (plain files list)", async () => {
+    await writeFile(
+      join(rootPath, TOKENCRAFT_CONFIG_FILENAME),
+      `${JSON.stringify({ version: 1, files: ["tokens/existing.tokens.json"] }, null, 2)}\n`,
+      "utf8"
+    );
+
+    await createTokenFile(rootPath, "tokens/brand.json");
+
+    const config = JSON.parse(
+      await readFile(join(rootPath, TOKENCRAFT_CONFIG_FILENAME), "utf8")
+    );
+
+    expect(config.files).toEqual([
+      "tokens/existing.tokens.json",
+      "tokens/brand.json",
+    ]);
+  });
+
+  it("registers the new file in an existing tokencraft.config.json (named collections)", async () => {
+    await writeFile(
+      join(rootPath, TOKENCRAFT_CONFIG_FILENAME),
+      `${JSON.stringify(
+        {
+          version: 1,
+          collections: [{ name: "Core", files: ["tokens/core.json"] }],
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+
+    await createTokenFile(rootPath, "tokens/brand.json", "My Set");
+
+    const config = JSON.parse(
+      await readFile(join(rootPath, TOKENCRAFT_CONFIG_FILENAME), "utf8")
+    );
+
+    expect(config.collections).toEqual([
+      { name: "Core", files: ["tokens/core.json"] },
+      { name: "My Set", files: ["tokens/brand.json"] },
+    ]);
   });
 });

@@ -1,11 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { FolderOpen } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { readJsonResponse } from "@/lib/api/read-json-response";
+import { createWorkspace } from "@/lib/workspaces/local-store";
+import { sanitizeFolderPathInput } from "@/lib/tokens/path-input";
 import { cn } from "@/lib/utils";
+
+import type { LocalWorkspace } from "@tokencraft/core";
 
 export function CreateWorkspaceDialog({
   open,
@@ -14,11 +18,13 @@ export function CreateWorkspaceDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onCreated: (workspace: { id: string; name: string; slug: string }) => void;
+  onCreated: (workspace: LocalWorkspace) => void;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
+  const [rootPath, setRootPath] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [isBrowsing, setIsBrowsing] = useState(false);
   const [isPending, setIsPending] = useState(false);
 
   useEffect(() => {
@@ -40,18 +46,40 @@ export function CreateWorkspaceDialog({
   useEffect(() => {
     if (!open) {
       setName("");
+      setRootPath("");
       setError(null);
+      setIsBrowsing(false);
       setIsPending(false);
     }
   }, [open]);
 
+  async function handleBrowse() {
+    setError(null);
+    setIsBrowsing(true);
+
+    try {
+      const response = await fetch("/api/workspaces/browse-native", { method: "POST" });
+      const payload = (await response.json().catch(() => ({}))) as { path?: string | null };
+
+      if (payload.path) {
+        setRootPath(payload.path);
+
+        if (!name.trim()) {
+          setName(payload.path.split("/").filter(Boolean).pop() ?? "");
+        }
+      }
+    } catch {
+      setError("Could not open the native folder picker on this machine.");
+    } finally {
+      setIsBrowsing(false);
+    }
+  }
+
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
 
-    const trimmedName = name.trim();
-
-    if (trimmedName.length < 2) {
-      setError("Workspace name must be at least 2 characters.");
+    if (!rootPath.trim()) {
+      setError("Choose a folder for this workspace.");
       return;
     }
 
@@ -59,30 +87,22 @@ export function CreateWorkspaceDialog({
     setError(null);
 
     try {
-      const response = await fetch("/api/workspaces", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "same-origin",
-        redirect: "manual",
-        body: JSON.stringify({
-          name: trimmedName,
-        }),
-      });
-      const result = await readJsonResponse<{
-        workspace?: { id: string; name: string; slug: string };
-      }>(response);
+      const response = await fetch(
+        `/api/workspaces/tokens?root=${encodeURIComponent(rootPath.trim())}`,
+        { cache: "no-store" }
+      );
 
-      if (result.error || !result.data?.workspace) {
-        throw new Error(result.error ?? "Unable to create workspace.");
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(payload.error ?? "That folder could not be opened.");
       }
 
-      onCreated(result.data.workspace);
+      const workspace = createWorkspace({ name: name.trim(), rootPath: rootPath.trim() });
+      onCreated(workspace);
       onOpenChange(false);
     } catch (submitError) {
       setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Unable to create workspace."
+        submitError instanceof Error ? submitError.message : "Unable to open this folder."
       );
     } finally {
       setIsPending(false);
@@ -101,22 +121,47 @@ export function CreateWorkspaceDialog({
     >
       <form onSubmit={handleSubmit} className="space-y-4 p-6">
         <div className="space-y-1">
-          <h2 className="text-lg font-semibold">Create workspace</h2>
+          <h2 className="text-lg font-semibold">Open a local project</h2>
           <p className="text-sm text-muted-foreground">
-            Each workspace has its own GitHub connection and token files.
+            Pick a folder on this computer. TokenCraft will auto-detect its design
+            token files.
           </p>
         </div>
 
         <div className="space-y-2">
+          <label htmlFor="workspace-path" className="text-sm font-medium">
+            Folder
+          </label>
+          <div className="flex gap-2">
+            <Input
+              id="workspace-path"
+              value={rootPath}
+              onChange={(event) => setRootPath(sanitizeFolderPathInput(event.target.value))}
+              placeholder="/path/to/your/project"
+              className="font-mono text-xs"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              className="shrink-0 gap-1.5"
+              onClick={handleBrowse}
+              disabled={isBrowsing}
+            >
+              <FolderOpen size={16} />
+              {isBrowsing ? "Waiting…" : "Browse…"}
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
           <label htmlFor="workspace-name" className="text-sm font-medium">
-            Name
+            Workspace name
           </label>
           <Input
             id="workspace-name"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Design system"
-            autoFocus
           />
         </div>
 
@@ -131,8 +176,8 @@ export function CreateWorkspaceDialog({
           >
             Cancel
           </Button>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? "Creating…" : "Create workspace"}
+          <Button type="submit" disabled={isPending || !rootPath.trim()}>
+            {isPending ? "Opening…" : "Open workspace"}
           </Button>
         </div>
       </form>

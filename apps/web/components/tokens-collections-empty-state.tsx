@@ -23,8 +23,8 @@ export function TokensCollectionsEmptyState({
         </div>
         <h2 className="text-xl font-semibold text-foreground">No collections yet</h2>
         <p className="empty-state-description">
-          Create a JSON token file in your repository, or import existing token files
-          from GitHub to start editing.
+          Create a new *.tokens.json file to start editing, or check the workspace
+          settings to see where this workspace looks for token files.
         </p>
         <div className="empty-state-actions">
           <Button type="button" onClick={() => setCreateCollectionDialogOpen(true)}>
@@ -34,7 +34,7 @@ export function TokensCollectionsEmptyState({
           <Button variant="outline" asChild>
             <Link href={settingsHref}>
               <Settings size={16} />
-              Import from repository
+              Workspace settings
             </Link>
           </Button>
         </div>

@@ -38,11 +38,11 @@ export function TokenColorPicker({
       defaultFormat={prefersRgbaFormat(normalizedValue) ? "rgb" : "hex"}
       className={cn("w-full", className)}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex h-9 items-center gap-2">
         <ColorPickerTrigger asChild>
           <ColorPickerSwatch
             asChild
-            className="size-8 shrink-0 cursor-pointer rounded-md border-border/50"
+            className="size-9 shrink-0 cursor-pointer rounded-md border-border/50"
           >
             <button
               type="button"
@@ -51,7 +51,7 @@ export function TokenColorPicker({
             />
           </ColorPickerSwatch>
         </ColorPickerTrigger>
-        <ColorPickerInput id={id} className="min-w-0 flex-1 font-mono" />
+        <ColorPickerInput id={id} className="h-9 min-w-0 flex-1 font-mono" />
       </div>
       <ColorPickerContent align="start" side="bottom">
         <ColorPickerArea />

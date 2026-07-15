@@ -1,0 +1,15 @@
+{
+  "color": {
+    "semantic": {
+      "background": {
+        "default": {
+          "$type": "color",
+          "$value": { "light": "{color.core.gray.50}", "dark": "{color.core.gray.900}" }
+        }
+      },
+      "brand": {
+        "primary": { "$type": "color", "$value": "{color.core.blue.500}" }
+      }
+    }
+  }
+}

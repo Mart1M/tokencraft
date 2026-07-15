@@ -1,0 +1,40 @@
+{
+  "name": "tokencraft",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Local-first design token editor — visualize and edit your project's *.tokens.json files from the browser.",
+  "license": "MIT",
+  "keywords": [
+    "design-tokens",
+    "design-system",
+    "dtcg",
+    "tokens",
+    "cli",
+    "npx"
+  ],
+  "bin": {
+    "tokencraft": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup src/cli.ts --format esm --out-dir dist --clean --target node20 && node scripts/embed-web.mjs",
+    "dev": "tsx src/cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "open": "^10.1.0",
+    "picocolors": "^1.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsup": "^8.3.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

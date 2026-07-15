@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import { flattenTokenEntries } from "@/lib/tokens/flatten";
 import { formatDtcgTokenValue } from "@/lib/tokens/dtcg-format";
-import { inspectTokenJson } from "@/lib/github/token-scan";
+import { inspectTokenJson } from "@/lib/tokens/fs";
 
 const dtcgExample = JSON.parse(
   readFileSync(resolve(__dirname, "fixtures/dtcg-example.json"), "utf8")
@@ -128,7 +128,7 @@ describe("inspectTokenJson", () => {
     );
 
     expect(result.collectionName).toBe("core");
-    expect(result.format).toBe("DTCG");
+    expect(result.format).toBe("dtcg");
     expect(result.tokenCount).toBe(2);
     expect(result.metadata.tokens).toEqual([
       {
@@ -151,7 +151,7 @@ describe("inspectTokenJson", () => {
   it("stores formatted values for the DTCG example file", () => {
     const result = inspectTokenJson("tokens/design.tokens.json", JSON.stringify(dtcgExample));
 
-    expect(result.format).toBe("DTCG");
+    expect(result.format).toBe("dtcg");
     expect(result.tokenCount).toBe(25);
     expect(result.metadata.tokens).toHaveLength(25);
   });

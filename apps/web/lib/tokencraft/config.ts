@@ -5,7 +5,18 @@ import {
 
 export { TOKENCRAFT_CONFIG_FILENAME };
 
+export const TOKENFLOW_CONFIG_FILENAME = "tokenflow.config.json";
+
 const CONFIG_VERSION = 1 as const;
+
+export type WorkspaceFileCollection = {
+  name: string;
+  modes?: string[];
+};
+
+export type ParsedWorkspaceConfig = TokencraftConfigFile & {
+  fileCollections?: Record<string, WorkspaceFileCollection>;
+};
 
 function normalizeFilePaths(paths: unknown) {
   if (!Array.isArray(paths)) {
@@ -16,13 +27,70 @@ function normalizeFilePaths(paths: unknown) {
     ...new Set(
       paths
         .filter((path): path is string => typeof path === "string")
-        .map((path) => path.trim())
+        .map((path) => path.trim().replace(/\\/g, "/"))
         .filter(Boolean)
     ),
   ];
 }
 
-export function parseTokencraftConfig(content: string): TokencraftConfigFile | null {
+function normalizeModes(modes: unknown) {
+  if (!Array.isArray(modes)) {
+    return undefined;
+  }
+
+  const normalized = [
+    ...new Set(
+      modes
+        .filter((mode): mode is string => typeof mode === "string")
+        .map((mode) => mode.trim())
+        .filter(Boolean)
+    ),
+  ];
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
+function parseCollectionsConfig(
+  collections: unknown
+): Pick<ParsedWorkspaceConfig, "files" | "fileCollections"> | null {
+  if (!Array.isArray(collections)) {
+    return null;
+  }
+
+  const files: string[] = [];
+  const fileCollections: Record<string, WorkspaceFileCollection> = {};
+
+  for (const collection of collections) {
+    if (!collection || typeof collection !== "object") {
+      continue;
+    }
+
+    const record = collection as Record<string, unknown>;
+    const name =
+      typeof record.name === "string" ? record.name.trim() : "";
+    const collectionFiles = normalizeFilePaths(record.files);
+    const modes = normalizeModes(record.modes);
+
+    if (!name || collectionFiles.length === 0) {
+      continue;
+    }
+
+    for (const filePath of collectionFiles) {
+      files.push(filePath);
+      fileCollections[filePath] = { name, modes };
+    }
+  }
+
+  const uniqueFiles = normalizeFilePaths(files);
+
+  if (uniqueFiles.length === 0) {
+    return null;
+  }
+
+  return { files: uniqueFiles, fileCollections };
+}
+
+export function parseTokencraftConfig(content: string): ParsedWorkspaceConfig | null {
   try {
     const json = JSON.parse(content) as Record<string, unknown>;
 
@@ -52,6 +120,16 @@ export function parseTokencraftConfig(content: string): TokencraftConfigFile | n
       return { version: CONFIG_VERSION, files };
     }
 
+    const collectionsConfig = parseCollectionsConfig(json.collections);
+
+    if (collectionsConfig) {
+      return {
+        version: CONFIG_VERSION,
+        files: collectionsConfig.files,
+        fileCollections: collectionsConfig.fileCollections,
+      };
+    }
+
     return null;
   } catch {
     return null;
@@ -65,4 +143,50 @@ export function serializeTokencraftConfig(files: string[]): string {
   };
 
   return `${JSON.stringify(payload, null, 2)}\n`;
+}
+
+function groupFileCollections(
+  fileCollections: Record<string, WorkspaceFileCollection>
+) {
+  const grouped = new Map<
+    string,
+    { files: string[]; modes?: string[] }
+  >();
+
+  for (const [filePath, collection] of Object.entries(fileCollections)) {
+    const existing = grouped.get(collection.name) ?? {
+      files: [],
+      modes: collection.modes,
+    };
+
+    existing.files.push(filePath);
+    grouped.set(collection.name, existing);
+  }
+
+  return [...grouped.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([name, collection]) => ({
+      name,
+      files: normalizeFilePaths(collection.files),
+      ...(collection.modes ? { modes: collection.modes } : {}),
+    }));
+}
+
+export function buildTokencraftConfigContent(config: ParsedWorkspaceConfig): string {
+  if (config.fileCollections && Object.keys(config.fileCollections).length > 0) {
+    return `${JSON.stringify(
+      {
+        version: CONFIG_VERSION,
+        collections: groupFileCollections(config.fileCollections),
+      },
+      null,
+      2
+    )}\n`;
+  }
+
+  return serializeTokencraftConfig(config.files);
+}
+
+export function parseForeignToolConfig(content: string): ParsedWorkspaceConfig | null {
+  return parseTokencraftConfig(content);
 }

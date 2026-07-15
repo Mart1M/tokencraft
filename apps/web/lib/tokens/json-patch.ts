@@ -156,42 +156,6 @@ export function setTokenAtPath(
   return root;
 }
 
-export function readTokenRawValue(
-  root: Record<string, unknown>,
-  tokenPath: string,
-  mode?: string | null
-) {
-  const leaf = getTokenLeaf(root, tokenPath);
-
-  if (!leaf || typeof leaf !== "object" || Array.isArray(leaf)) {
-    return null;
-  }
-
-  const record = leaf as Record<string, unknown>;
-  const valueKey = "$value" in record ? "$value" : "value" in record ? "value" : null;
-
-  if (!valueKey) {
-    return null;
-  }
-
-  const value = record[valueKey];
-
-  if (mode && value && typeof value === "object" && !Array.isArray(value)) {
-    const modeValue = (value as Record<string, unknown>)[mode];
-    return typeof modeValue === "string" ? modeValue : JSON.stringify(modeValue);
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-
-  return JSON.stringify(value);
-}
-
 function ensureObjectAtPath(
   root: Record<string, unknown>,
   keys: string[]

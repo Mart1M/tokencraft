@@ -1,7 +1,6 @@
-@layer theme, base, neon-auth, components, utilities;
+@layer theme, base, components, utilities;
 
 @import "tailwindcss";
-@import "@neondatabase/auth/ui/css" layer(neon-auth);
 
 @source "../app";
 @source "../components";
@@ -13,13 +12,6 @@
   font-family: var(--font-instrument-serif), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
 }
 
-/*
- * @neondatabase/auth/ui/css ships its own compiled Tailwind bundle (own
- * preflight + own utility classes, e.g. `.hidden`, `.p-1`, `.border`)
- * and can collide with app utilities. App-specific composed classes such
- * as `.empty-state-card` are emitted outside Tailwind layers below so
- * they win the cascade without requiring a Tailwind config file.
- */
 .app-sidebar {
   display: none;
 }

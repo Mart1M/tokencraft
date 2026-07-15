@@ -73,12 +73,18 @@ export function buildRawValueFromDraftInput(
   mode?: string | null
 ) {
   if (mode && current.modes) {
-    const nextModes = Object.fromEntries(
-      Object.entries(current.modes).map(([modeName, display]) => [
-        modeName,
-        modeName === mode ? formatted : displayToRaw(display),
-      ])
-    );
+    const nextModes: Record<string, unknown> = {};
+
+    for (const [modeName, display] of Object.entries(current.modes)) {
+      nextModes[modeName] = modeName === mode ? formatted : displayToRaw(display);
+    }
+
+    // `current.modes` only contains modes that already have a value for
+    // this token; a brand-new mode (e.g. one just added in the UI) won't be
+    // in there yet, so make sure it still ends up in the written value.
+    if (!(mode in nextModes)) {
+      nextModes[mode] = formatted;
+    }
 
     if (current.raw && typeof current.raw === "object" && !Array.isArray(current.raw)) {
       return {
@@ -88,6 +94,20 @@ export function buildRawValueFromDraftInput(
     }
 
     return nextModes;
+  }
+
+  if (mode && !current.modes) {
+    // Token only has a flat value so far; seed a modes map so the existing
+    // value isn't discarded when a value is set under a new mode.
+    const existingRaw =
+      current.raw !== undefined
+        ? current.raw
+        : rawValueFromDisplay(current.value, current.type, current.display);
+
+    return {
+      Default: existingRaw,
+      [mode]: formatted,
+    };
   }
 
   return rawValueFromDisplay(formatted, current.type, current.display);

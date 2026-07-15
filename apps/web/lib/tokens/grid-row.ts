@@ -5,10 +5,7 @@ export type TokenGridRow = {
   id: string;
   name: string;
   typeLabel: string;
-  valueText: string;
-  displayValue: TokenDisplayValue;
+  modeValues: Record<string, TokenDisplayValue | null>;
   draftStatus: "create" | "update" | "delete" | null;
   token: ImportedTokenRow;
 };
-
-export type TokenDraftStatus = TokenGridRow["draftStatus"];

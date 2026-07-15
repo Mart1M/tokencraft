@@ -132,7 +132,7 @@ export function DataGrid<TData>({
           role="rowgroup"
           data-slot="grid-header"
           ref={headerRef}
-          className="sticky top-0 z-10 grid shrink-0 border-b bg-muted"
+          className="sticky top-0 z-10 block shrink-0 border-b bg-muted"
         >
           {table.getHeaderGroups().map((headerGroup, rowIndex) => (
             <div
@@ -177,7 +177,7 @@ export function DataGrid<TData>({
                     }
                     data-slot="grid-header-cell"
                     tabIndex={-1}
-                    className={cn("relative", {
+                    className={cn("relative min-w-0", {
                       grow: stretchColumns && header.column.id !== "select",
                       "border-e":
                         showEndBorder && header.column.id !== "select",
@@ -257,7 +257,7 @@ export function DataGrid<TData>({
             role="rowgroup"
             data-slot="grid-footer"
             ref={footerRef}
-            className="sticky bottom-0 z-10 grid border-t bg-background"
+            className="sticky bottom-0 z-10 block border-t bg-background"
           >
             <div
               role="row"
