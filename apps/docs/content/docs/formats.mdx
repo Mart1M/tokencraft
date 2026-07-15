@@ -1,0 +1,56 @@
+---
+title: Token formats
+description: DTCG and Tokens Studio JSON support
+---
+
+TokenCraft reads and writes standard design token JSON. It detects the format per file and preserves the style on save.
+
+## DTCG (Design Tokens Format)
+
+Uses `$`-prefixed keys:
+
+```json
+{
+  "colors": {
+    "brand": {
+      "primary": {
+        "$type": "color",
+        "$value": "#531fff"
+      }
+    }
+  }
+}
+```
+
+Common `$type` values: `color`, `dimension`, `fontFamily`, `fontWeight`, `duration`, `cubicBezier`, `shadow`, `border`, `typography`, `gradient`.
+
+## Tokens Studio
+
+Uses plain `type` and `value` keys:
+
+```json
+{
+  "colors": {
+    "brand": {
+      "primary": {
+        "type": "color",
+        "value": "#531fff"
+      }
+    }
+  }
+}
+```
+
+TokenCraft also supports Tokens Studio types such as `composition`, `borderRadius`, `sizing`, `spacing`, and `opacity`.
+
+## Aliases
+
+Both formats represent references as strings:
+
+```
+"{colors.brand.primary}"
+```
+
+## Mixed workspaces
+
+A single workspace can contain files in different formats. TokenCraft does not convert between DTCG and Tokens Studio automatically — each file keeps its original convention when saved.

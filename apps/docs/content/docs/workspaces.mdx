@@ -1,0 +1,35 @@
+---
+title: Workspaces
+description: Open and manage local token projects
+---
+
+A **workspace** is a named link to a folder on your machine. TokenCraft remembers workspaces in your browser's `localStorage`.
+
+## Opening a project
+
+**From the CLI** — pass the folder path:
+
+```bash
+tokencraft ./my-design-system
+```
+
+**From the dashboard** — use **Open folder** or **Create workspace** to pick a directory with the native folder picker.
+
+## Workspace settings
+
+Each workspace has:
+
+- **Name** — display label in the sidebar
+- **Root path** — absolute path to the token project on disk
+
+You can rename a workspace or change its root path from the workspace settings page. The slug in the URL is derived from the workspace name.
+
+## Collections sidebar
+
+Token files appear as **collections** in the left sidebar. When `tokencraft.config.json` defines named collections, files are grouped accordingly. Otherwise each `*.tokens.json` file is its own collection.
+
+## Modes
+
+Collections can define **modes** (e.g. `light`, `dark`, `mobile`). Each mode is a column in the token grid. Modes can be renamed or removed from the column header context menu.
+
+Modes are stored in your config and reflected in the token files on save.

@@ -1,0 +1,31 @@
+---
+title: Introduction
+description: Local-first design token editor for your *.tokens.json files
+---
+
+TokenCraft is a **local-first** design token editor. It runs on your machine, reads `*.tokens.json` files from a folder you choose, and lets you browse and edit them in a browser dashboard.
+
+Nothing is uploaded to the cloud. No account, no Git integration, no external services.
+
+<Cards>
+  <Card title="Getting started" href="/docs/getting-started" description="Install and open your first project" />
+  <Card title="Configuration" href="/docs/config" description="tokencraft.config.json reference" />
+  <Card title="Token formats" href="/docs/formats" description="DTCG and Tokens Studio support" />
+</Cards>
+
+## How it works
+
+1. Run `npx tokencraft` (or `tokencraft` if installed globally).
+2. Pick a local folder containing token JSON files.
+3. Edit tokens in the grid or detail panel.
+4. Click **Save changes** to write updates back to disk atomically.
+
+Workspaces (which folder you opened and how you named it) are stored in your browser's `localStorage`.
+
+## Example project
+
+The repo includes a minimal sample at `examples/basic`:
+
+```bash
+npx tokencraft ./examples/basic
+```

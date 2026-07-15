@@ -1,0 +1,53 @@
+---
+title: Editing tokens
+description: Grid, detail panel, aliases, and extensions
+---
+
+## Token grid
+
+The main view is a spreadsheet-style grid. Each row is a token; columns include name, type, value per mode, and metadata.
+
+- **Search** — filter tokens by name
+- **Groups** — browse the token tree in the sidebar
+- **Click a row** — open the detail panel on the right
+
+## Detail panel
+
+The edit panel lets you change:
+
+| Field | Description |
+| ----- | ----------- |
+| Name / path | Dot-separated token path |
+| Type | color, dimension, typography, composition, etc. |
+| Value | Type-specific editor (color picker, number, alias reference…) |
+| Description | Optional `$description` / `description` field |
+| Extensions | Custom key-value metadata |
+
+Changes are staged locally until you save.
+
+## Aliases
+
+Reference another token with curly-brace syntax:
+
+```
+{colors.brand.primary}
+```
+
+The alias combobox suggests tokens from the current workspace.
+
+## Composition tokens
+
+TokenCraft supports Tokens Studio **composition** tokens — grouped references such as typography presets:
+
+```json
+{
+  "type": "composition",
+  "value": {
+    "typography": "{typography.body.medium}"
+  }
+}
+```
+
+## Auto-save drafts
+
+Edits are kept as in-memory drafts keyed by token and mode. Switching between tokens or modes preserves unsaved changes until you save or reload the workspace.

@@ -1,0 +1,62 @@
+---
+title: Development
+description: Run and build TokenCraft from source
+---
+
+TokenCraft is a pnpm monorepo.
+
+## Prerequisites
+
+- Node.js 20+
+- pnpm 9+
+
+## Install
+
+```bash
+git clone https://github.com/Mart1M/tokencraft.git
+cd tokencraft
+pnpm install
+```
+
+## Web app
+
+```bash
+pnpm dev
+```
+
+Opens the editor at [http://localhost:3000](http://localhost:3000).
+
+## Documentation site
+
+```bash
+pnpm dev:docs
+```
+
+Opens this docs site at [http://localhost:3001](http://localhost:3001).
+
+## Tests and typecheck
+
+```bash
+pnpm test
+pnpm typecheck
+```
+
+## Build the CLI
+
+The `tokencraft` npm package embeds the Next.js standalone build:
+
+```bash
+pnpm build
+pnpm build:cli
+node packages/cli/dist/cli.js ./examples/basic
+```
+
+## Project layout
+
+| Path | Role |
+| ---- | ---- |
+| `apps/web` | Next.js editor UI + filesystem API |
+| `apps/docs` | Fumadocs documentation site |
+| `packages/cli` | `tokencraft` CLI published to npm |
+| `packages/core` | Shared types |
+| `examples/basic` | Sample token project |

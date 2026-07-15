@@ -45,6 +45,7 @@ npx tokencraft ./examples/basic
 ```bash
 pnpm install
 pnpm dev              # apps/web on http://localhost:3000
+pnpm dev:docs         # apps/docs on http://localhost:3001
 pnpm test
 pnpm typecheck
 ```

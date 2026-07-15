@@ -1,0 +1,33 @@
+---
+title: Getting started
+description: Install TokenCraft and open a token project
+---
+
+## Requirements
+
+- Node.js 20 or later
+
+## Run without installing
+
+```bash
+npx tokencraft ./path/to/your/tokens
+```
+
+TokenCraft starts a local server and opens your browser. Pass a folder path to skip the welcome screen.
+
+## Global install
+
+```bash
+npm install -g tokencraft
+tokencraft ./path/to/your/tokens
+```
+
+## What gets loaded
+
+TokenCraft scans the folder you open for `**/*.tokens.json` files.
+
+If a `tokencraft.config.json` exists at the project root, it uses that file list instead of auto-discovery. See [Configuration](/docs/config).
+
+## Saving changes
+
+Edits are staged in the browser until you click **Save changes**. TokenCraft then writes each modified file back to disk using atomic writes, so a failed save won't corrupt your JSON.

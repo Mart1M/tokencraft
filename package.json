@@ -10,7 +10,9 @@
   },
   "scripts": {
     "dev": "pnpm --filter @tokencraft/web dev",
+    "dev:docs": "pnpm --filter @tokencraft/docs dev",
     "build": "pnpm --filter @tokencraft/web build",
+    "build:docs": "pnpm --filter @tokencraft/docs build",
     "build:cli": "pnpm --filter tokencraft build",
     "lint": "pnpm --filter @tokencraft/web lint",
     "test": "pnpm --filter @tokencraft/web test",
