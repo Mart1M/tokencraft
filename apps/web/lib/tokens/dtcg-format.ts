@@ -65,6 +65,14 @@ function formatObjectValue(value: Record<string, unknown>, type?: string): strin
     return parts.join(" · ") || JSON.stringify(value).slice(0, 160);
   }
 
+  if (type === "composition") {
+    const parts = ["typography", "border", "boxShadow", "fill"]
+      .map((key) => (value[key] ? `${key}: ${formatPrimitive(value[key])}` : null))
+      .filter(Boolean);
+
+    return parts.join(" · ") || JSON.stringify(value).slice(0, 160);
+  }
+
   if (type === "transition") {
     const parts = ["duration", "delay", "timingFunction"]
       .map((key) => (value[key] ? formatPrimitive(value[key]) : null))

@@ -96,7 +96,10 @@ function pendingEditsEqual(left: PendingTokenEdit, right: PendingTokenEdit) {
   );
 }
 
-function metadataEqual(left: PendingTokenMetadata, right: PendingTokenMetadata) {
+function metadataEqual(
+  left: PendingTokenMetadata,
+  right: PendingTokenMetadata,
+) {
   return (
     left.description === right.description &&
     serializeExtensions(left.extensions) ===
@@ -172,9 +175,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
 
   const savedEditsByMode = useMemo(
     () =>
-      token
-        ? buildPendingEditsByMode(token, availableModes, tokenDrafts)
-        : {},
+      token ? buildPendingEditsByMode(token, availableModes, tokenDrafts) : {},
     [token, availableModes, tokenDrafts],
   );
 
@@ -397,6 +398,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
               </p>
             </div>
             <TokenExtensionsEditor
+              key={`create:${createContext.fileId}`}
               value={createExtensions}
               onChange={setCreateExtensions}
             />
@@ -410,7 +412,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
             onClick={saveCreateDraft}
             disabled={!createPath.trim()}
           >
-            Add to draft
+            Add
           </Button>
           {pendingId && drafts[pendingId] ? (
             <Button
@@ -516,9 +518,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
     }
 
     if (panelEditScope === "all") {
-      setPendingEditsByMode(
-        buildPendingEditsByMode(token, availableModes, []),
-      );
+      setPendingEditsByMode(buildPendingEditsByMode(token, availableModes, []));
       setPendingMetadata(getEditableTokenMetadata(token, undefined));
       return;
     }
@@ -535,8 +535,8 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
     const deleteSource =
       panelEditScope === "single" && savedEdit
         ? savedEdit
-        : savedEditsByMode[availableModes[0] ?? ""] ??
-          getPendingTokenEdit(token, null);
+        : (savedEditsByMode[availableModes[0] ?? ""] ??
+          getPendingTokenEdit(token, null));
 
     if (tokenDrafts.some((entry) => entry.operation === "create")) {
       clearDraft(token.id);
@@ -708,6 +708,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
                 </p>
               </div>
               <TokenExtensionsEditor
+                key={`edit:${selectedTokenId ?? "none"}`}
                 value={pendingMetadata.extensions}
                 onChange={(extensions) =>
                   setPendingMetadata((current) => ({ ...current, extensions }))

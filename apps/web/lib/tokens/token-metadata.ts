@@ -42,8 +42,8 @@ export function extensionsToKeyValueItems(
     return [];
   }
 
-  return Object.entries(extensions).map(([key, value]) => ({
-    id: `ext:${key}`,
+  return Object.entries(extensions).map(([key, value], index) => ({
+    id: `ext:${index}`,
     key,
     value,
   }));

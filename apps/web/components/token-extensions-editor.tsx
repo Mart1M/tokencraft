@@ -17,16 +17,6 @@ import {
   keyValueItemsToExtensions,
 } from "@/lib/tokens/token-metadata";
 
-function serializeExtensions(extensions?: TokenExtensions) {
-  if (!extensions) {
-    return "";
-  }
-
-  return JSON.stringify(
-    Object.entries(extensions).sort(([left], [right]) => left.localeCompare(right)),
-  );
-}
-
 export function TokenExtensionsEditor({
   value,
   onChange,
@@ -34,14 +24,9 @@ export function TokenExtensionsEditor({
   value?: TokenExtensions;
   onChange: (value: TokenExtensions | undefined) => void;
 }) {
-  const serializedValue = serializeExtensions(value);
   const [items, setItems] = React.useState<KeyValueItemData[]>(() =>
     extensionsToKeyValueItems(value),
   );
-
-  React.useEffect(() => {
-    setItems(extensionsToKeyValueItems(value));
-  }, [serializedValue]);
 
   return (
     <KeyValue

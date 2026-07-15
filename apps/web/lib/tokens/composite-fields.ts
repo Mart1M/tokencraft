@@ -43,6 +43,13 @@ export const TOKEN_COMPOSITE_FIELDS: Record<string, CompositeFieldDefinition[]> 
     { key: "dashArray", label: "Dash array", placeholder: "4 2" },
     { key: "lineCap", label: "Line cap", placeholder: "round" },
   ],
+  // Tokens Studio "composition" tokens reference other tokens by category.
+  composition: [
+    { key: "typography", label: "Typography", placeholder: "{path.to.typography}" },
+    { key: "border", label: "Border", placeholder: "{path.to.border}" },
+    { key: "boxShadow", label: "Box shadow", placeholder: "{path.to.shadow}" },
+    { key: "fill", label: "Fill", placeholder: "{path.to.color}" },
+  ],
 };
 
 export function getCompositeFieldsForType(type?: string) {

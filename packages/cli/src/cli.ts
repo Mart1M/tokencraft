@@ -63,12 +63,13 @@ async function runServer(path: string | undefined, opts: CliOptions): Promise<vo
   }
 
   const serverEntry = resolveServerEntry();
+  const standaloneRoot = join(serverEntry, "../../..");
 
   console.log(pc.bold(pc.cyan("\n  TokenCraft")));
   console.log(pc.dim(`  ${root ?? "no project — pick one from the welcome screen"}\n`));
 
   const child = spawn(process.execPath, [serverEntry], {
-    cwd: dirname(serverEntry),
+    cwd: standaloneRoot,
     env: {
       ...process.env,
       PORT: String(opts.port),
@@ -118,7 +119,7 @@ const program = new Command();
 program
   .name("tokencraft")
   .description("Local-first design token editor")
-  .version("0.1.0");
+  .version("0.1.2");
 
 program
   .argument("[path]", "project folder to open (omit to pick one from the welcome screen)")

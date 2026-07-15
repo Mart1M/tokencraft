@@ -1,0 +1,24 @@
+{
+  "vp": {
+    "android": {
+      "component": {
+        "accordion": {
+          "typography": {
+            "label": {
+              "type": "composition",
+              "value": {
+                "typography": "{vp.semantic.typography.mobile.body-m}"
+              }
+            },
+            "subline": {
+              "type": "composition",
+              "value": {
+                "typography": "{vp.semantic.typography.mobile.caption}"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

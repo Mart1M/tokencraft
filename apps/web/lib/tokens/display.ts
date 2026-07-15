@@ -34,6 +34,7 @@ const COMPOSITE_FIELD_ORDER: Record<string, string[]> = {
   shadow: getCompositeFieldKeys("shadow"),
   asset: getCompositeFieldKeys("asset"),
   strokeStyle: getCompositeFieldKeys("strokeStyle"),
+  composition: getCompositeFieldKeys("composition"),
 };
 
 // Composite token types (e.g. Tokens Studio "composition" tokens) store a
@@ -49,6 +50,7 @@ const RESERVED_COMPOSITE_FIELD_KEYS = new Set([
   "transition",
   "asset",
   "strokeStyle",
+  "fill",
   "fontFamily",
   "fontSize",
   "fontWeight",
@@ -282,7 +284,7 @@ function buildCompositeDisplay(
       parts.push({ kind: "text", text: " " });
     }
 
-    if (type === "typography") {
+    if (type === "typography" || type === "composition") {
       parts.push({ kind: "text", text: `${key}: ` });
     }
 

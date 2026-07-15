@@ -1,6 +1,6 @@
 {
   "name": "tokencraft",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "type": "module",
   "description": "Local-first design token editor — visualize and edit your project's *.tokens.json files from the browser.",
   "license": "MIT",
@@ -22,7 +22,7 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsup src/cli.ts --format esm --out-dir dist --clean --target node20 && node scripts/embed-web.mjs",
+    "build": "tsup && node scripts/embed-web.mjs",
     "dev": "tsx src/cli.ts",
     "typecheck": "tsc --noEmit"
   },

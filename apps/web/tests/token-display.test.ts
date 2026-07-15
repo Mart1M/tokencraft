@@ -97,6 +97,28 @@ describe("composite token display", () => {
       ])
     );
   });
+
+  it("renders Tokens Studio composition typography references", () => {
+    const display = buildTokenDisplayValue(
+      {
+        typography: "{vp.semantic.typography.mobile.body-m}",
+      },
+      "composition"
+    );
+
+    expect(display).toEqual({
+      kind: "composite",
+      text: "typography: {vp.semantic.typography.mobile.body-m}",
+      parts: [
+        { kind: "text", text: "typography: " },
+        {
+          kind: "alias",
+          text: "{vp.semantic.typography.mobile.body-m}",
+          aliasPath: "vp.semantic.typography.mobile.body-m",
+        },
+      ],
+    });
+  });
 });
 
 describe("hex color display", () => {

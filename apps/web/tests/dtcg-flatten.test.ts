@@ -105,6 +105,49 @@ describe("flattenTokenEntries", () => {
   });
 });
 
+describe("Tokens Studio composition tokens", () => {
+  const compositionExample = JSON.parse(
+    readFileSync(resolve(__dirname, "fixtures/tokens-studio-composition.json"), "utf8")
+  ) as Record<string, unknown>;
+
+  it("flattens composition typography tokens from Tokens Studio format", () => {
+    const tokens = flattenTokenEntries(compositionExample);
+
+    expect(tokens).toContainEqual(
+      expect.objectContaining({
+        path: "vp.android.component.accordion.typography.label",
+        type: "composition",
+        value: "typography: {vp.semantic.typography.mobile.body-m}",
+        display: {
+          kind: "composite",
+          text: "typography: {vp.semantic.typography.mobile.body-m}",
+          parts: [
+            { kind: "text", text: "typography: " },
+            {
+              kind: "alias",
+              text: "{vp.semantic.typography.mobile.body-m}",
+              aliasPath: "vp.semantic.typography.mobile.body-m",
+            },
+          ],
+        },
+        raw: {
+          typography: "{vp.semantic.typography.mobile.body-m}",
+        },
+      })
+    );
+  });
+
+  it("detects tokens-studio format for composition files", () => {
+    const inspected = inspectTokenJson(
+      "component/accordion/android.json",
+      JSON.stringify(compositionExample)
+    );
+
+    expect(inspected.format).toBe("tokens-studio");
+    expect(inspected.tokenCount).toBe(2);
+  });
+});
+
 describe("inspectTokenJson", () => {
   it("detects DTCG token files and counts nested tokens", () => {
     const result = inspectTokenJson(
