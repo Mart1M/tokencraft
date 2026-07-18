@@ -6,6 +6,7 @@ import {
 } from "@/lib/tokens/display";
 import type { LocalTokenFile } from "@/lib/tokens/fs";
 import { type StoredTokenEntry, type StoredTokenRawValue } from "@/lib/tokens/flatten";
+import type { TokenColorModifier } from "@/lib/tokens/color-modifier";
 
 export type ImportedTokenRow = {
   id: string;
@@ -20,6 +21,7 @@ export type ImportedTokenRow = {
   modes?: Record<string, TokenDisplayValue>;
   description?: string;
   extensions?: Record<string, string>;
+  colorModifier?: TokenColorModifier;
 };
 
 export type TokenAliasOption = {
@@ -105,6 +107,7 @@ export function getImportedTokenRows(tokenFiles: LocalTokenFile[]): ImportedToke
         ...(entry.display ? { display: entry.display } : {}),
         ...(entry.description ? { description: entry.description } : {}),
         ...(entry.extensions ? { extensions: entry.extensions } : {}),
+        ...(entry.colorModifier ? { colorModifier: entry.colorModifier } : {}),
         ...(modes ? { modes } : {}),
       };
 

@@ -235,7 +235,7 @@ export function TokenModeColumnHeader({
   canDeleteMode?: boolean;
 }) {
   return (
-    <div className="flex size-full min-w-0 items-center justify-between gap-2 text-sm">
+    <div className="flex size-full min-w-0 items-center justify-between gap-2 text-[13px] font-medium text-foreground">
       {onRenameMode && onDeleteMode ? (
         <ModeHeaderContextMenu
           mode={mode}

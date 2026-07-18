@@ -66,9 +66,9 @@ function formatObjectValue(value: Record<string, unknown>, type?: string): strin
   }
 
   if (type === "composition") {
-    const parts = ["typography", "border", "boxShadow", "fill"]
-      .map((key) => (value[key] ? `${key}: ${formatPrimitive(value[key])}` : null))
-      .filter(Boolean);
+    const parts = Object.entries(value)
+      .filter(([, fieldValue]) => fieldValue !== undefined && fieldValue !== null && fieldValue !== "")
+      .map(([key, fieldValue]) => `${key}: ${formatPrimitive(fieldValue)}`);
 
     return parts.join(" · ") || JSON.stringify(value).slice(0, 160);
   }

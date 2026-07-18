@@ -4,11 +4,9 @@ import { useCallback } from "react";
 import { toast } from "sonner";
 
 import { useTokenExplorer } from "@/components/token-explorer-provider";
-import { useWorkspaceData } from "@/components/workspace-data-provider";
 import { useTokenDraftStore } from "@/lib/tokens/draft-store";
 
 export function useCollectionModeOperations() {
-  const { workspace, refresh } = useWorkspaceData();
   const {
     availableModes,
     selectedCollectionId,
@@ -17,6 +15,7 @@ export function useCollectionModeOperations() {
   } = useTokenExplorer();
   const renameModeDrafts = useTokenDraftStore((state) => state.renameModeDrafts);
   const deleteModeDrafts = useTokenDraftStore((state) => state.deleteModeDrafts);
+  const stageModeChange = useTokenDraftStore((state) => state.stageModeChange);
 
   const renameMode = useCallback(
     async (oldMode: string, newMode: string) => {
@@ -40,49 +39,24 @@ export function useCollectionModeOperations() {
         return false;
       }
 
-      if (workspace) {
-        try {
-          const response = await fetch("/api/workspaces/modes", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "rename",
-              rootPath: workspace.rootPath,
-              fileId: selectedCollectionId,
-              oldMode,
-              newMode: trimmedNew,
-              modes: availableModes.map((mode) =>
-                mode === oldMode ? trimmedNew : mode
-              ),
-            }),
-          });
-          const payload = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(payload.error ?? "Failed to rename mode.");
-          }
-        } catch (error) {
-          toast.error(
-            error instanceof Error ? error.message : "Failed to rename mode."
-          );
-          return false;
-        }
-
-        await refresh();
-      }
-
+      stageModeChange({
+        fileId: selectedCollectionId,
+        action: "rename",
+        oldMode,
+        newMode: trimmedNew,
+        modes: availableModes,
+      });
       renameCollectionModeLocal(oldMode, trimmedNew);
       renameModeDrafts(oldMode, trimmedNew);
-      toast.success(`Renamed mode to "${trimmedNew}".`);
+      toast.success(`Mode rename staged.`);
       return true;
     },
     [
       availableModes,
-      refresh,
       renameCollectionModeLocal,
       renameModeDrafts,
       selectedCollectionId,
-      workspace,
+      stageModeChange,
     ]
   );
 
@@ -97,46 +71,23 @@ export function useCollectionModeOperations() {
         return false;
       }
 
-      if (workspace) {
-        try {
-          const response = await fetch("/api/workspaces/modes", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              action: "delete",
-              rootPath: workspace.rootPath,
-              fileId: selectedCollectionId,
-              mode,
-              modes: availableModes.filter((currentMode) => currentMode !== mode),
-            }),
-          });
-          const payload = await response.json().catch(() => ({}));
-
-          if (!response.ok) {
-            throw new Error(payload.error ?? "Failed to delete mode.");
-          }
-        } catch (error) {
-          toast.error(
-            error instanceof Error ? error.message : "Failed to delete mode."
-          );
-          return false;
-        }
-
-        await refresh();
-      }
-
+      stageModeChange({
+        fileId: selectedCollectionId,
+        action: "delete",
+        mode,
+        modes: availableModes,
+      });
       deleteCollectionModeLocal(mode);
       deleteModeDrafts(mode);
-      toast.success(`Deleted mode "${mode}".`);
+      toast.success(`Mode deletion staged.`);
       return true;
     },
     [
       availableModes,
       deleteCollectionModeLocal,
       deleteModeDrafts,
-      refresh,
       selectedCollectionId,
-      workspace,
+      stageModeChange,
     ]
   );
 

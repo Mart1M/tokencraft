@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { getDefaultMode } from "@/lib/tokens/display";
+import { useTokenDraftStore } from "@/lib/tokens/draft-store";
 import type { TokenSidebarCollection } from "@/lib/tokens/entries";
 
 type TokenExplorerContextValue = {
@@ -80,6 +81,7 @@ export function TokenExplorerProvider({
       ? getCollectionDefaultActiveMode(collections[0].modes)
       : getCollectionDefaultActiveMode(fallbackModes)
   );
+  const stageModeChange = useTokenDraftStore((state) => state.stageModeChange);
 
   const setSelectedCollectionId = useMemo(
     () => (id: string | null) => {
@@ -145,9 +147,21 @@ export function TokenExplorerProvider({
 
         return { ...current, [selectedCollectionId]: [...existing, trimmed] };
       });
+      const baseModes = getCollectionModes(collections, selectedCollectionId, fallbackModes);
+      const manualModes = manualModesByCollection[selectedCollectionId] ?? [];
+      const modes = Array.from(new Set([...baseModes, ...manualModes]));
+
+      if (!modes.includes(trimmed)) {
+        stageModeChange({
+          fileId: selectedCollectionId,
+          action: "add",
+          mode: trimmed,
+          modes,
+        });
+      }
       setActiveMode(trimmed);
     },
-    [selectedCollectionId]
+    [collections, fallbackModes, manualModesByCollection, selectedCollectionId, stageModeChange]
   );
 
   const renameCollectionMode = useMemo(

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { RotateCcw, Trash2, X } from "lucide-react";
 
 import { TokenExtensionsEditor } from "@/components/token-extensions-editor";
+import { TokenDependencies } from "@/components/token-dependencies";
+import { TokenColorModifierEditor } from "@/components/token-color-modifier-editor";
 import { TokenTypeCombobox } from "@/components/token-type-combobox";
 import { TokenValueEditor } from "@/components/token-value-editor";
 import { useTokenExplorer } from "@/components/token-explorer-provider";
@@ -29,13 +31,21 @@ import type { ImportedTokenRow } from "@/lib/tokens/entries";
 import { getTokenAliasOptions } from "@/lib/tokens/entries";
 import { isCompositeTokenType } from "@/lib/tokens/composite-fields";
 import type { TokenExtensions } from "@/lib/tokens/token-metadata";
+import {
+  createDefaultColorModifier,
+  type TokenColorModifier,
+} from "@/lib/tokens/color-modifier";
+import { buildTokenDisplayValue } from "@/lib/tokens/display";
+import { resolveColorModifierPreview } from "@/lib/tokens/color-modifier-preview";
 import { getDefaultLiteralValueForType } from "@/lib/tokens/value-editor";
+import { getTokenGroupSegments } from "@/lib/tokens/token-tree";
 
 type PendingTokenEdit = {
   valueKind: TokenValueKind;
   rawValue: string;
   description: string;
   extensions: TokenExtensions | undefined;
+  colorModifier: TokenColorModifier | undefined;
 };
 
 function serializeExtensions(extensions?: TokenExtensions) {
@@ -48,6 +58,10 @@ function serializeExtensions(extensions?: TokenExtensions) {
       left.localeCompare(right),
     ),
   );
+}
+
+function serializeColorModifier(modifier?: TokenColorModifier) {
+  return modifier ? JSON.stringify(modifier) : "";
 }
 
 function getPendingTokenEdit(
@@ -63,12 +77,14 @@ function getPendingTokenEdit(
     rawValue: editable.rawValue,
     description: metadata.description ?? "",
     extensions: metadata.extensions,
+    colorModifier: metadata.colorModifier,
   };
 }
 
 type PendingTokenMetadata = {
   description: string;
   extensions: TokenExtensions | undefined;
+  colorModifier: TokenColorModifier | undefined;
 };
 
 function buildPendingEditsByMode(
@@ -92,7 +108,8 @@ function pendingEditsEqual(left: PendingTokenEdit, right: PendingTokenEdit) {
     left.rawValue === right.rawValue &&
     left.description === right.description &&
     serializeExtensions(left.extensions) ===
-      serializeExtensions(right.extensions)
+      serializeExtensions(right.extensions) &&
+    serializeColorModifier(left.colorModifier) === serializeColorModifier(right.colorModifier)
   );
 }
 
@@ -103,12 +120,53 @@ function metadataEqual(
   return (
     left.description === right.description &&
     serializeExtensions(left.extensions) ===
-      serializeExtensions(right.extensions)
+      serializeExtensions(right.extensions) &&
+    serializeColorModifier(left.colorModifier) === serializeColorModifier(right.colorModifier)
   );
 }
 
+function buildModifierPreviewToken(
+  token: ImportedTokenRow,
+  valueKind: TokenValueKind,
+  rawValue: string,
+  colorModifier?: TokenColorModifier,
+): ImportedTokenRow {
+  const value = valueKind === "alias" ? `{${rawValue}}` : rawValue;
+
+  return {
+    ...token,
+    value,
+    display: buildTokenDisplayValue(value, "color"),
+    colorModifier,
+  };
+}
+
+/** Creates the same editable row shape for a token that only exists in drafts. */
+function buildCreatedTokenRow(
+  draft: TokenDraft,
+  tokens: ImportedTokenRow[],
+): ImportedTokenRow {
+  const collection = tokens.find((candidate) => candidate.fileId === draft.fileId);
+  const rawValue =
+    draft.valueKind === "alias" ? `{${draft.rawValue}}` : draft.rawValue;
+
+  return {
+    id: draft.tokenId,
+    fileId: draft.fileId,
+    sourcePath: collection?.sourcePath ?? "",
+    collectionName: collection?.collectionName ?? "Collection",
+    name: draft.path,
+    ...(draft.type ? { type: draft.type } : {}),
+    value: rawValue,
+    display: buildTokenDisplayValue(rawValue, draft.type),
+    ...(draft.description ? { description: draft.description } : {}),
+    ...(draft.extensions ? { extensions: draft.extensions } : {}),
+    ...(draft.colorModifier ? { colorModifier: draft.colorModifier } : {}),
+  };
+}
+
 export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
-  const { availableModes } = useTokenExplorer();
+  const { availableModes, setSelectedCollectionId, setSelectedGroupSegments } = useTokenExplorer();
   const selectedTokenId = useTokenDraftStore((state) => state.selectedTokenId);
   const isPanelOpen = useTokenDraftStore((state) => state.isPanelOpen);
   const panelMode = useTokenDraftStore((state) => state.panelMode);
@@ -119,6 +177,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
   const closePanel = useTokenDraftStore((state) => state.closePanel);
   const clearDraft = useTokenDraftStore((state) => state.clearDraft);
   const setDraft = useTokenDraftStore((state) => state.setDraft);
+  const openToken = useTokenDraftStore((state) => state.openToken);
 
   const [createPath, setCreatePath] = useState("");
   const [createType, setCreateType] = useState("color");
@@ -129,11 +188,13 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
   const [createExtensions, setCreateExtensions] = useState<
     TokenExtensions | undefined
   >();
+  const [createColorModifier, setCreateColorModifier] = useState<TokenColorModifier>();
   const [pendingEdit, setPendingEdit] = useState<PendingTokenEdit>({
     valueKind: "literal",
     rawValue: "",
     description: "",
     extensions: undefined,
+    colorModifier: undefined,
   });
   const [pendingEditsByMode, setPendingEditsByMode] = useState<
     Record<string, PendingTokenEdit>
@@ -141,12 +202,22 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
   const [pendingMetadata, setPendingMetadata] = useState<PendingTokenMetadata>({
     description: "",
     extensions: undefined,
+    colorModifier: undefined,
   });
 
-  const token = useMemo(
-    () => tokens.find((row) => row.id === selectedTokenId) ?? null,
-    [selectedTokenId, tokens],
-  );
+  const token = useMemo(() => {
+    const savedToken = tokens.find((row) => row.id === selectedTokenId);
+
+    if (savedToken) {
+      return savedToken;
+    }
+
+    const createdDraft = Object.values(drafts).find(
+      (entry) => entry.tokenId === selectedTokenId && entry.operation === "create",
+    );
+
+    return createdDraft ? buildCreatedTokenRow(createdDraft, tokens) : null;
+  }, [drafts, selectedTokenId, tokens]);
 
   const tokenDrafts = useMemo(
     () => (selectedTokenId ? getDraftsForToken(drafts, selectedTokenId) : []),
@@ -183,7 +254,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
     () =>
       token
         ? getEditableTokenMetadata(token, tokenDrafts[0])
-        : { description: "", extensions: undefined },
+        : { description: "", extensions: undefined, colorModifier: undefined },
     [token, tokenDrafts],
   );
 
@@ -220,6 +291,16 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
     [tokens, token?.id],
   );
 
+  function openDependency(target: ImportedTokenRow) {
+    setSelectedCollectionId(target.fileId);
+    setSelectedGroupSegments(getTokenGroupSegments(target.name));
+    openToken(target.id);
+  }
+  const colorAliasOptions = useMemo(
+    () => aliasOptions.filter((option) => option.type === "color"),
+    [aliasOptions],
+  );
+
   useEffect(() => {
     if (panelMode === "create") {
       setCreatePath("");
@@ -228,6 +309,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
       setCreateRawValue(getDefaultLiteralValueForType("color"));
       setCreateDescription("");
       setCreateExtensions(undefined);
+      setCreateColorModifier(undefined);
     }
   }, [panelMode, createContext?.fileId]);
 
@@ -301,13 +383,14 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
           rawValue: createRawValue,
           description: createDescription,
           extensions: createExtensions,
+          colorModifier: createColorModifier,
         }),
       );
       closePanel();
     }
 
     return (
-      <aside className="fixed inset-y-0 right-0 z-50 flex w-[420px] flex-col border-l bg-background shadow-xl">
+      <aside className="fixed inset-y-0 right-0 z-50 flex w-[480px] flex-col border-l bg-background shadow-xl">
         <div className="flex items-start justify-between gap-3 border-b px-4 py-4">
           <div className="min-w-0 space-y-1">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -343,7 +426,12 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
             <TokenTypeCombobox
               id="create-token-type"
               value={createType}
-              onValueChange={setCreateType}
+              onValueChange={(type) => {
+                setCreateType(type);
+                if (type !== "color") {
+                  setCreateColorModifier(undefined);
+                }
+              }}
             />
           </div>
 
@@ -365,8 +453,39 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
               aliasOptions={aliasOptions}
               onValueKindChange={setCreateValueKind}
               onRawValueChange={setCreateRawValue}
+              hasColorModifier={Boolean(createColorModifier)}
+              onColorModifierClick={() => {
+                if (createColorModifier) {
+                  return;
+                }
+
+                setCreateColorModifier(createDefaultColorModifier());
+              }}
             />
           </div>
+
+          {createType === "color" ? (
+            <TokenColorModifierEditor
+              value={createColorModifier}
+              colorAliases={colorAliasOptions}
+              rows={tokens}
+              previewToken={buildModifierPreviewToken(
+                {
+                  id: "create-preview",
+                  fileId: createContext.fileId,
+                  sourcePath: "",
+                  collectionName: createContext.collectionName,
+                  name: createPath.trim() || "__new_color__",
+                  type: "color",
+                  value: createRawValue,
+                },
+                createValueKind,
+                createRawValue,
+                createColorModifier,
+              )}
+              onChange={setCreateColorModifier}
+            />
+          ) : null}
 
           <Separator />
 
@@ -410,7 +529,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
             type="button"
             size="sm"
             onClick={saveCreateDraft}
-            disabled={!createPath.trim()}
+            disabled={!createPath.trim() || Boolean(createColorModifier && (!createRawValue.trim() || (createColorModifier.type === "mix" && !createColorModifier.color)))}
           >
             Add
           </Button>
@@ -434,6 +553,40 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
     return null;
   }
 
+  const modifierPreviewMode =
+    panelEditScope === "all"
+      ? availableModes.find((mode) => mode.toLowerCase() === "default") ?? availableModes[0] ?? "Default"
+      : panelFocusMode ?? "Default";
+  const modifierPreviewEdit =
+    panelEditScope === "all"
+      ? pendingEditsByMode[modifierPreviewMode] ??
+        getPendingTokenEdit(token, resolveStorageMode(token, modifierPreviewMode))
+      : pendingEdit;
+
+  const modifierPreview = pendingMetadata.colorModifier
+    ? resolveColorModifierPreview(
+        [
+          ...tokens.filter((row) => row.id !== token.id),
+          buildModifierPreviewToken(
+            token,
+            modifierPreviewEdit.valueKind,
+            modifierPreviewEdit.rawValue,
+            pendingMetadata.colorModifier,
+          ),
+        ],
+        buildModifierPreviewToken(
+          token,
+          modifierPreviewEdit.valueKind,
+          modifierPreviewEdit.rawValue,
+          pendingMetadata.colorModifier,
+        ),
+        modifierPreviewMode,
+      )
+    : undefined;
+  const modifierChanged =
+    serializeColorModifier(pendingMetadata.colorModifier) !==
+    serializeColorModifier(savedMetadata.colorModifier);
+
   function applyChanges() {
     if (!hasPendingChanges || !token) {
       return;
@@ -442,7 +595,13 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
     const metadata = {
       description: pendingMetadata.description,
       extensions: pendingMetadata.extensions,
+      colorModifier: pendingMetadata.colorModifier,
     };
+    // A draft-only token has no source entry yet: edits must remain a create
+    // operation so the grouped save inserts it instead of trying to update it.
+    const operation = tokenDrafts.some((entry) => entry.operation === "create")
+      ? "create"
+      : "update";
 
     if (panelEditScope === "all") {
       let appliedAnyValue = false;
@@ -464,7 +623,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
               resolveStorageMode(token, mode),
               pending.valueKind,
               pending.rawValue,
-              "update",
+              operation,
               metadata,
             ),
           );
@@ -485,7 +644,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
               resolveStorageMode(token, fallbackMode),
               pending.valueKind,
               pending.rawValue,
-              "update",
+              operation,
               metadata,
             ),
           );
@@ -500,7 +659,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
       activeMode,
       pendingEdit.valueKind,
       pendingEdit.rawValue,
-      "update",
+      operation,
       metadata,
     );
     setDraft(nextDraft);
@@ -556,13 +715,27 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
       ...(pendingMetadata.extensions
         ? { extensions: pendingMetadata.extensions }
         : {}),
+      ...(pendingMetadata.colorModifier
+        ? { colorModifier: pendingMetadata.colorModifier }
+        : {}),
       operation: "delete",
     });
     closePanel();
   }
 
+  function addColorModifier() {
+    if (!token || pendingMetadata.colorModifier) {
+      return;
+    }
+
+    setPendingMetadata((current) => ({
+      ...current,
+      colorModifier: createDefaultColorModifier(),
+    }));
+  }
+
   return (
-    <aside className="fixed inset-y-0 right-0 z-50 flex w-[420px] flex-col border-l bg-background shadow-xl">
+    <aside className="fixed inset-y-0 right-0 z-50 flex w-[480px] flex-col border-l bg-background shadow-xl">
       <div className="flex items-start justify-between gap-3 border-b px-4 py-4">
         <div className="min-w-0 space-y-1">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">
@@ -634,6 +807,8 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
                             [mode]: { ...pending, rawValue },
                           }))
                         }
+                        hasColorModifier={Boolean(pendingMetadata.colorModifier)}
+                        onColorModifierClick={addColorModifier}
                       />
                     </div>
                   );
@@ -669,9 +844,29 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
                   onRawValueChange={(rawValue) =>
                     setPendingEdit((current) => ({ ...current, rawValue }))
                   }
+                  hasColorModifier={Boolean(pendingMetadata.colorModifier)}
+                  onColorModifierClick={addColorModifier}
                 />
               </div>
             )}
+
+            {token.type === "color" ? (
+              <TokenColorModifierEditor
+                value={pendingMetadata.colorModifier}
+                colorAliases={colorAliasOptions}
+                rows={tokens}
+                previewToken={buildModifierPreviewToken(
+                  token,
+                  modifierPreviewEdit.valueKind,
+                  modifierPreviewEdit.rawValue,
+                  pendingMetadata.colorModifier,
+                )}
+                mode={modifierPreviewMode}
+                onChange={(colorModifier) => {
+                  setPendingMetadata((current) => ({ ...current, colorModifier }));
+                }}
+              />
+            ) : null}
 
             <Separator />
 
@@ -723,6 +918,14 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
           </p>
         )}
 
+        <TokenDependencies
+          token={token}
+          tokens={tokens}
+          drafts={drafts}
+          mode={activeMode}
+          onOpenToken={openDependency}
+        />
+
         <div className="rounded-lg border bg-muted/20 p-3 text-xs text-muted-foreground">
           Source file:{" "}
           <span className="font-mono text-foreground">{token.sourcePath}</span>
@@ -735,7 +938,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
             type="button"
             size="sm"
             onClick={applyChanges}
-            disabled={!hasPendingChanges}
+            disabled={!hasPendingChanges || Boolean(modifierChanged && modifierPreview?.error)}
           >
             Apply
           </Button>

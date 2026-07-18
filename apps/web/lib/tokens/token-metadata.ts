@@ -1,5 +1,9 @@
 import type { KeyValueItemData } from "@/components/ui/key-value";
 import type { StoredTokenEntry } from "@/lib/tokens/flatten";
+import {
+  parseTokenColorModifier,
+  type TokenColorModifier,
+} from "@/lib/tokens/color-modifier";
 
 export type TokenExtensions = Record<string, string>;
 
@@ -70,17 +74,54 @@ export function keyValueItemsToExtensions(
 export function extractDtcgTokenMetadata(record: Record<string, unknown>) {
   const description =
     typeof record.$description === "string" ? record.$description : undefined;
-  const extensions = parseDtcgExtensions(record.$extensions);
+  const rawExtensions = record.$extensions;
+  const modifier =
+    rawExtensions && typeof rawExtensions === "object" && !Array.isArray(rawExtensions)
+      ? parseTokenColorModifier(
+          (rawExtensions as Record<string, unknown>).tokencraft &&
+            typeof (rawExtensions as Record<string, unknown>).tokencraft === "object"
+            ? ((rawExtensions as Record<string, unknown>).tokencraft as Record<string, unknown>).modify
+            : undefined,
+        )
+      : undefined;
+  const extensions = parseDtcgExtensions(withoutTokencraftModifier(rawExtensions));
 
   return {
     ...(description ? { description } : {}),
     ...(extensions ? { extensions } : {}),
+    ...(modifier ? { colorModifier: modifier } : {}),
   };
+}
+
+function withoutTokencraftModifier(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return value;
+  }
+
+  const extensions = { ...(value as Record<string, unknown>) };
+  const tokencraft = extensions.tokencraft;
+
+  if (tokencraft && typeof tokencraft === "object" && !Array.isArray(tokencraft)) {
+    const remaining = { ...(tokencraft as Record<string, unknown>) };
+    delete remaining.modify;
+
+    if (Object.keys(remaining).length > 0) {
+      extensions.tokencraft = remaining;
+    } else {
+      delete extensions.tokencraft;
+    }
+  }
+
+  return extensions;
 }
 
 export function mergeTokenMetadata(
   entry: StoredTokenEntry,
-  draft: { description?: string; extensions?: TokenExtensions },
+  draft: {
+    description?: string;
+    extensions?: TokenExtensions;
+    colorModifier?: TokenColorModifier | null;
+  },
   previous?: StoredTokenEntry
 ): StoredTokenEntry {
   const description =
@@ -92,6 +133,10 @@ export function mergeTokenMetadata(
     draft.extensions !== undefined
       ? draft.extensions
       : previous?.extensions ?? entry.extensions;
+  const colorModifier =
+    Object.hasOwn(draft, "colorModifier")
+      ? draft.colorModifier
+      : previous?.colorModifier ?? entry.colorModifier;
 
   const next: StoredTokenEntry = { ...entry };
 
@@ -105,6 +150,12 @@ export function mergeTokenMetadata(
     next.extensions = extensions;
   } else {
     delete next.extensions;
+  }
+
+  if (colorModifier) {
+    next.colorModifier = colorModifier;
+  } else {
+    delete next.colorModifier;
   }
 
   return next;

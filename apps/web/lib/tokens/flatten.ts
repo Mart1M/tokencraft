@@ -7,6 +7,7 @@ import {
 } from "@/lib/tokens/display";
 import { toStoredTokenRawValue } from "@/lib/tokens/raw-value";
 import { extractDtcgTokenMetadata } from "@/lib/tokens/token-metadata";
+import type { TokenColorModifier } from "@/lib/tokens/color-modifier";
 
 export type StoredTokenRawValue =
   import("@/lib/tokens/raw-value").StoredTokenRawValue;
@@ -20,6 +21,7 @@ export type StoredTokenEntry = {
   modes?: Record<string, TokenDisplayValue>;
   description?: string;
   extensions?: Record<string, string>;
+  colorModifier?: TokenColorModifier;
 };
 
 export type TokenFileMetadata = {

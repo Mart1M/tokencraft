@@ -7,6 +7,22 @@ import { getDraftKey } from "@/lib/tokens/draft-utils";
 
 type TokenPanelEditScope = "all" | "single";
 
+export type PendingCollectionCreate = {
+  id: string;
+  path: string;
+  collectionName?: string;
+};
+
+export type PendingModeChange = {
+  id: string;
+  fileId: string;
+  action: "add" | "rename" | "delete";
+  oldMode?: string;
+  newMode?: string;
+  mode?: string;
+  modes: string[];
+};
+
 type TokenDraftStore = {
   selectedTokenId: string | null;
   isPanelOpen: boolean;
@@ -16,6 +32,8 @@ type TokenDraftStore = {
   createContext: { fileId: string; collectionName: string; sourcePath: string } | null;
   drafts: Record<string, TokenDraft>;
   pendingCollectionDeletes: string[];
+  pendingCollectionCreates: Record<string, PendingCollectionCreate>;
+  pendingModeChanges: Record<string, PendingModeChange>;
   openToken: (tokenId: string) => void;
   openTokenForMode: (tokenId: string, mode: string) => void;
   openCreateToken: (context: {
@@ -26,11 +44,16 @@ type TokenDraftStore = {
   closePanel: () => void;
   setDraft: (draft: TokenDraft) => void;
   clearDraft: (tokenId: string) => void;
+  clearDraftByKey: (key: string) => void;
   clearAllDrafts: () => void;
   renameModeDrafts: (oldMode: string, newMode: string) => void;
   deleteModeDrafts: (mode: string) => void;
   markCollectionForDelete: (fileId: string) => void;
   unmarkCollectionForDelete: (fileId: string) => void;
+  stageCollectionCreate: (change: Omit<PendingCollectionCreate, "id">) => void;
+  clearCollectionCreate: (id: string) => void;
+  stageModeChange: (change: Omit<PendingModeChange, "id">) => void;
+  clearModeChange: (id: string) => void;
   reset: () => void;
   hasLocalEdits: () => boolean;
 };
@@ -44,6 +67,8 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
   createContext: null,
   drafts: {},
   pendingCollectionDeletes: [],
+  pendingCollectionCreates: {},
+  pendingModeChanges: {},
   openToken: (tokenId) =>
     set({
       selectedTokenId: tokenId,
@@ -89,6 +114,9 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
   clearDraft: (tokenId) =>
     set((state) => {
       const nextDrafts = { ...state.drafts };
+      const removedDrafts = Object.values(nextDrafts).filter(
+        (draft) => draft.tokenId === tokenId,
+      );
 
       for (const key of Object.keys(nextDrafts)) {
         if (key === tokenId || key.startsWith(`${tokenId}::`)) {
@@ -96,12 +124,52 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
         }
       }
 
-      return { drafts: nextDrafts };
+      const discardedCreatedToken =
+        state.selectedTokenId === tokenId &&
+        removedDrafts.some((draft) => draft.operation === "create");
+
+      return {
+        drafts: nextDrafts,
+        ...(discardedCreatedToken
+          ? { selectedTokenId: null, isPanelOpen: false }
+          : {}),
+      };
+    }),
+  clearDraftByKey: (key) =>
+    set((state) => {
+      const drafts = { ...state.drafts };
+      const removedDraft = drafts[key];
+      delete drafts[key];
+      const discardedCreatedToken =
+        removedDraft?.operation === "create" &&
+        state.selectedTokenId === removedDraft.tokenId &&
+        !Object.values(drafts).some(
+          (draft) => draft.tokenId === removedDraft.tokenId && draft.operation === "create",
+        );
+
+      return {
+        drafts,
+        ...(discardedCreatedToken
+          ? { selectedTokenId: null, isPanelOpen: false }
+          : {}),
+      };
     }),
   clearAllDrafts: () =>
-    set({
-      drafts: {},
-      pendingCollectionDeletes: [],
+    set((state) => {
+      const discardedSelectedCreatedToken = Object.values(state.drafts).some(
+        (draft) =>
+          draft.tokenId === state.selectedTokenId && draft.operation === "create",
+      );
+
+      return {
+        drafts: {},
+        pendingCollectionDeletes: [],
+        pendingCollectionCreates: {},
+        pendingModeChanges: {},
+        ...(discardedSelectedCreatedToken
+          ? { selectedTokenId: null, isPanelOpen: false }
+          : {}),
+      };
     }),
   renameModeDrafts: (oldMode, newMode) =>
     set((state) => {
@@ -150,10 +218,42 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
     set((state) => ({
       pendingCollectionDeletes: state.pendingCollectionDeletes.filter((id) => id !== fileId),
     })),
+  stageCollectionCreate: (change) => {
+    const id = `create:${change.path}`;
+    set((state) => ({
+      pendingCollectionCreates: {
+        ...state.pendingCollectionCreates,
+        [id]: { ...change, id },
+      },
+    }));
+  },
+  clearCollectionCreate: (id) =>
+    set((state) => {
+      const pendingCollectionCreates = { ...state.pendingCollectionCreates };
+      delete pendingCollectionCreates[id];
+      return { pendingCollectionCreates };
+    }),
+  stageModeChange: (change) => {
+    const id = `${change.fileId}:${change.action}:${change.oldMode ?? change.mode ?? change.newMode}`;
+    set((state) => ({
+      pendingModeChanges: {
+        ...state.pendingModeChanges,
+        [id]: { ...change, id },
+      },
+    }));
+  },
+  clearModeChange: (id) =>
+    set((state) => {
+      const pendingModeChanges = { ...state.pendingModeChanges };
+      delete pendingModeChanges[id];
+      return { pendingModeChanges };
+    }),
   reset: () =>
     set({
       drafts: {},
       pendingCollectionDeletes: [],
+      pendingCollectionCreates: {},
+      pendingModeChanges: {},
       selectedTokenId: null,
       isPanelOpen: false,
       panelMode: "edit",
@@ -165,6 +265,8 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
     const state = get();
     return (
       Object.keys(state.drafts).length > 0 || state.pendingCollectionDeletes.length > 0
+      || Object.keys(state.pendingCollectionCreates).length > 0
+      || Object.keys(state.pendingModeChanges).length > 0
     );
   },
 }));

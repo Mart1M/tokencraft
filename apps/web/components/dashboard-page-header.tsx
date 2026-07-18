@@ -10,8 +10,8 @@ export function DashboardPageHeader({
   titleClassName?: string;
 }) {
   return (
-    <div className="flex h-14 items-center">
-      <div className="flex w-full items-center justify-between gap-4 py-1">
+    <div className="flex h-14 items-center border-b border-border/70 bg-background">
+      <div className="flex w-full min-w-0 items-center justify-between gap-4 py-1">
         <h1
           className={cn(
             "min-w-0 text-base text-foreground",
@@ -20,7 +20,7 @@ export function DashboardPageHeader({
         >
           {title}
         </h1>
-        {actions ? <div className="shrink-0">{actions}</div> : null}
+        {actions ? <div className="shrink-0 whitespace-nowrap">{actions}</div> : null}
       </div>
     </div>
   );

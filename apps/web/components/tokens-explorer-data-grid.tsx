@@ -11,6 +11,7 @@ import {
   getEffectiveTokenRow,
 } from "@/lib/tokens/draft-utils";
 import { getRowModeDisplayValue } from "@/lib/tokens/display";
+import { resolveColorModifierPreview } from "@/lib/tokens/color-modifier-preview";
 import type { TokenGridRow } from "@/lib/tokens/grid-row";
 import type { useTokenDraftStore } from "@/lib/tokens/draft-store";
 import { useDataGrid } from "@/hooks/use-data-grid";
@@ -21,11 +22,12 @@ function toModeColumnId(mode: string) {
 
 function toGridRow(
   token: ImportedTokenRow,
+  effectiveRows: ImportedTokenRow[],
   drafts: ReturnType<typeof useTokenDraftStore.getState>["drafts"],
   availableModes: string[]
 ): TokenGridRow {
   const tokenDrafts = getDraftsForToken(drafts, token.id);
-  const effectiveRow = getEffectiveTokenRow(token, tokenDrafts);
+  const effectiveRow = effectiveRows.find((row) => row.id === token.id) ?? token;
   const modeValues = Object.fromEntries(
     availableModes.map((mode) => [
       mode,
@@ -43,6 +45,14 @@ function toGridRow(
     name: token.name,
     typeLabel: token.type ?? "",
     modeValues,
+    resolvedColors: Object.fromEntries(
+      availableModes.map((mode) => [
+        mode,
+        effectiveRow.type === "color"
+          ? resolveColorModifierPreview(effectiveRows, effectiveRow, mode).color
+          : undefined,
+      ]),
+    ),
     draftStatus,
     token,
   };
@@ -72,9 +82,14 @@ export function TokensExplorerDataGrid({
   canDeleteMode?: boolean;
 }) {
   const gridData = useMemo(
-    () =>
-      rows.map((token) => toGridRow(token, drafts, availableModes)),
-    [rows, drafts, availableModes]
+    () => {
+      const effectiveRows = rows.map((token) =>
+        getEffectiveTokenRow(token, getDraftsForToken(drafts, token.id)),
+      );
+
+      return rows.map((token) => toGridRow(token, effectiveRows, drafts, availableModes));
+    },
+    [rows, drafts, availableModes],
   );
 
   const columns = useMemo<ColumnDef<TokenGridRow>[]>(
@@ -83,8 +98,8 @@ export function TokensExplorerDataGrid({
         id: "name",
         accessorKey: "name",
         header: "Token",
-        size: 260,
-        minSize: 180,
+        size: 300,
+        minSize: 220,
         enableResizing: false,
         enablePinning: false,
         enableHiding: false,
@@ -97,8 +112,8 @@ export function TokensExplorerDataGrid({
         id: "type",
         accessorKey: "typeLabel",
         header: "Type",
-        size: 130,
-        minSize: 100,
+        size: 126,
+        minSize: 110,
         enableResizing: false,
         enablePinning: false,
         enableHiding: false,
@@ -123,7 +138,7 @@ export function TokensExplorerDataGrid({
               canDeleteMode={canDeleteMode}
             />
           ),
-          size: 200,
+          size: 190,
           minSize: 140,
           enableResizing: false,
           enablePinning: false,
@@ -182,7 +197,7 @@ export function TokensExplorerDataGrid({
       {...dataGridProps}
       fillHeight
       stretchColumns
-      className="min-h-0 flex-1 h-full w-full [&_[data-slot=grid]]:rounded-none [&_[data-slot=grid]]:border-x-0"
+      className="min-h-0 h-full w-full flex-1 [&_[data-slot=grid]]:rounded-none [&_[data-slot=grid]]:border-x-0 [&_[data-slot=grid]]:border-y-0 [&_[data-slot=grid-header]]:border-border/80 [&_[data-slot=grid-header]]:bg-muted [&_[data-slot=grid-header-row]]:h-11 [&_[data-slot=grid-row]]:transition-colors [&_[data-slot=grid-row]]:duration-150 [&_[data-slot=grid-row]]:ease-out [&_[data-slot=grid-row]]:hover:bg-muted/40 [&_[data-slot=grid-row]]:focus-within:bg-primary/[0.045] [&_[data-slot=grid-cell]]:border-border/65 [&_[data-slot=grid-cell-wrapper]]:px-3 [&_[data-slot=grid-cell-wrapper]]:py-2 [&_[data-slot=grid-cell-wrapper]]:transition-colors [&_[data-slot=grid-cell-wrapper]]:duration-150 [&_[data-slot=grid-cell-wrapper][data-selected]]:bg-primary/[0.07]"
     />
   );
 }

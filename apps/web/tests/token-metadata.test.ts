@@ -5,6 +5,7 @@ import { buildJsonFromMetadata } from "@/lib/tokens/json-patch";
 import {
   extensionsToKeyValueItems,
   keyValueItemsToExtensions,
+  mergeTokenMetadata,
   parseDtcgExtensions,
 } from "@/lib/tokens/token-metadata";
 
@@ -79,5 +80,58 @@ describe("token metadata", () => {
 
   it("parses flat extension objects", () => {
     expect(parseDtcgExtensions({ figmaId: "abc" })).toEqual({ figmaId: "abc" });
+  });
+
+  it("extracts and writes the TokenCraft color modifier without flattening it", () => {
+    const entries = flattenTokenEntries({
+      color: {
+        overlay: {
+          $type: "color",
+          $value: "{color.base}",
+          $extensions: {
+            tokencraft: {
+              modify: { space: "srgb", type: "alpha", value: "0.05" },
+            },
+            "com.figma": { styleId: "S:123" },
+          },
+        },
+      },
+    });
+
+    expect(entries[0]?.colorModifier).toEqual({
+      space: "srgb",
+      type: "alpha",
+      value: "0.05",
+    });
+    expect(entries[0]?.extensions).toEqual({ "com.figma.styleId": "S:123" });
+
+    expect(buildJsonFromMetadata({ topLevelKeys: ["color"], tokens: entries })).toEqual({
+      color: {
+        overlay: {
+          $type: "color",
+          $value: "{color.base}",
+          $extensions: {
+            "com.figma.styleId": "S:123",
+            tokencraft: {
+              modify: { space: "srgb", type: "alpha", value: "0.05" },
+            },
+          },
+        },
+      },
+    });
+  });
+
+  it("removes a modifier explicitly from a draft", () => {
+    const next = mergeTokenMetadata(
+      {
+        path: "color.overlay",
+        type: "color",
+        value: "{color.base}",
+        colorModifier: { space: "srgb", type: "alpha", value: "0.05" },
+      },
+      { colorModifier: null },
+    );
+
+    expect(next.colorModifier).toBeUndefined();
   });
 });

@@ -34,7 +34,7 @@ const COMPOSITE_FIELD_ORDER: Record<string, string[]> = {
   shadow: getCompositeFieldKeys("shadow"),
   asset: getCompositeFieldKeys("asset"),
   strokeStyle: getCompositeFieldKeys("strokeStyle"),
-  composition: getCompositeFieldKeys("composition"),
+  composition: [],
 };
 
 // Composite token types (e.g. Tokens Studio "composition" tokens) store a
@@ -78,7 +78,11 @@ const RESERVED_COMPOSITE_FIELD_KEYS = new Set([
   "format",
 ]);
 
-export function looksLikeModeMap(value: Record<string, unknown>) {
+export function looksLikeModeMap(value: Record<string, unknown>, type?: string) {
+  if (type === "composition") {
+    return false;
+  }
+
   if ("$value" in value || "$type" in value || "value" in value) {
     return false;
   }
@@ -143,7 +147,7 @@ export function resolveStoredTokenModes(entry: {
     entry.raw &&
     typeof entry.raw === "object" &&
     !Array.isArray(entry.raw) &&
-    looksLikeModeMap(entry.raw as Record<string, unknown>)
+    looksLikeModeMap(entry.raw as Record<string, unknown>, entry.type)
   ) {
     const modes: Record<string, TokenDisplayValue> = {};
 
@@ -267,7 +271,8 @@ function buildCompositeDisplay(
     return null;
   }
 
-  const orderedKeys = COMPOSITE_FIELD_ORDER[type];
+  const orderedKeys =
+    type === "composition" ? Object.keys(raw) : COMPOSITE_FIELD_ORDER[type];
 
   if (!orderedKeys) {
     return null;
@@ -370,7 +375,7 @@ export function buildStoredTokenEntry(
     rawValue &&
     typeof rawValue === "object" &&
     !Array.isArray(rawValue) &&
-    looksLikeModeMap(rawValue as Record<string, unknown>)
+    looksLikeModeMap(rawValue as Record<string, unknown>, type)
   ) {
     const modes: Record<string, TokenDisplayValue> = {};
 

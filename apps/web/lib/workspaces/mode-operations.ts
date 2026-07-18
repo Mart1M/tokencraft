@@ -88,6 +88,20 @@ function removeModeFromModesList(modes: string[], mode: string) {
   return modes.filter((currentMode) => currentMode !== mode);
 }
 
+function addModeToModesList(modes: string[], mode: string) {
+  const trimmedMode = normalizeModeName(mode);
+
+  if (!trimmedMode) {
+    throw new ModeOperationError("Mode name is required.");
+  }
+
+  if (modes.includes(trimmedMode)) {
+    throw new ModeOperationError(`Mode "${trimmedMode}" already exists.`);
+  }
+
+  return [...modes, trimmedMode];
+}
+
 function renameModeInEntry(
   entry: StoredTokenEntry,
   oldMode: string,
@@ -272,6 +286,23 @@ export async function renameWorkspaceCollectionMode(
   const metadata = applyModeRenameToMetadata(file.metadata, oldMode, newMode);
 
   await writeTokenFile(rootPath, file, metadata);
+  await updateConfigModes(rootPath, file, nextModes, files);
+
+  return { modes: nextModes };
+}
+
+export async function addWorkspaceCollectionMode(
+  rootPath: string,
+  input: {
+    fileId: string;
+    mode: string;
+    modes: string[];
+  }
+) {
+  const mode = normalizeModeName(input.mode);
+  const nextModes = addModeToModesList(input.modes, mode);
+  const { file, files } = await getCollectionFile(rootPath, input.fileId);
+
   await updateConfigModes(rootPath, file, nextModes, files);
 
   return { modes: nextModes };

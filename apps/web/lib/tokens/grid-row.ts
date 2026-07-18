@@ -6,6 +6,7 @@ export type TokenGridRow = {
   name: string;
   typeLabel: string;
   modeValues: Record<string, TokenDisplayValue | null>;
+  resolvedColors: Record<string, string | undefined>;
   draftStatus: "create" | "update" | "delete" | null;
   token: ImportedTokenRow;
 };

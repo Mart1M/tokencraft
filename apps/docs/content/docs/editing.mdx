@@ -48,6 +48,24 @@ TokenCraft supports Tokens Studio **composition** tokens — grouped references 
 }
 ```
 
+## Color modifiers
+
+Color tokens can derive a referenced color through the **Modify color** card in
+the detail panel. TokenCraft stores the modifier in its extension namespace:
+
+```json
+{
+  "$extensions": {
+    "tokencraft": {
+      "modify": { "space": "srgb", "type": "alpha", "value": "0.05" }
+    }
+  }
+}
+```
+
+Available operations are `lighten`, `darken`, `alpha`, and `mix`. A `mix` can
+use either another color token or a literal color.
+
 ## Auto-save drafts
 
 Edits are kept as in-memory drafts keyed by token and mode. Switching between tokens or modes preserves unsaved changes until you save or reload the workspace.

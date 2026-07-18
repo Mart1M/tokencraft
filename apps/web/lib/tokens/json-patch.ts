@@ -1,6 +1,7 @@
 import type { TokenFileMetadata } from "@/lib/tokens/flatten";
 import { entryToRawValue } from "@/lib/tokens/serialize";
 import type { TokenExtensions } from "@/lib/tokens/token-metadata";
+import type { TokenColorModifier } from "@/lib/tokens/color-modifier";
 
 const ALIAS_PATTERN = /^\{([^}]+)\}$/;
 
@@ -252,7 +253,11 @@ export function removeTokenAtPath(root: Record<string, unknown>, tokenPath: stri
 export function applyTokenMetadataToLeaf(
   root: Record<string, unknown>,
   tokenPath: string,
-  metadata: { description?: string; extensions?: TokenExtensions }
+  metadata: {
+    description?: string;
+    extensions?: TokenExtensions;
+    colorModifier?: TokenColorModifier;
+  }
 ) {
   const leaf = getTokenLeaf(root, tokenPath);
 
@@ -269,8 +274,16 @@ export function applyTokenMetadataToLeaf(
     delete record.$description;
   }
 
-  if (metadata.extensions && Object.keys(metadata.extensions).length > 0) {
-    record.$extensions = metadata.extensions;
+  const extensions = { ...(metadata.extensions ?? {}) } as Record<string, unknown>;
+
+  if (metadata.colorModifier) {
+    extensions.tokencraft = {
+      modify: metadata.colorModifier,
+    };
+  }
+
+  if (Object.keys(extensions).length > 0) {
+    record.$extensions = extensions;
   } else {
     delete record.$extensions;
   }
@@ -290,6 +303,7 @@ export function buildJsonFromMetadata(metadata: TokenFileMetadata) {
     applyTokenMetadataToLeaf(root, entry.path, {
       ...(entry.description ? { description: entry.description } : {}),
       ...(entry.extensions ? { extensions: entry.extensions } : {}),
+      ...(entry.colorModifier ? { colorModifier: entry.colorModifier } : {}),
     });
   }
 

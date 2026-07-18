@@ -13,9 +13,9 @@ import {
 import { isCompositeTokenType } from "@/lib/tokens/composite-fields";
 import type { StoredTokenRawValue } from "@/lib/tokens/raw-value";
 import {
-  mergeTokenMetadata,
   type TokenExtensions,
 } from "@/lib/tokens/token-metadata";
+import type { TokenColorModifier } from "@/lib/tokens/color-modifier";
 import {
   objectToCompositeFieldValues,
   resolveStoredRawArray,
@@ -39,6 +39,7 @@ export type TokenDraft = {
   operation?: TokenDraftOperation;
   description?: string;
   extensions?: TokenExtensions;
+  colorModifier?: TokenColorModifier | null;
 };
 
 export function getDraftKey(draft: Pick<TokenDraft, "tokenId" | "mode">) {
@@ -129,6 +130,17 @@ export function draftFromDisplayValue(
     };
   }
 
+  if (token.type === "composition") {
+    const rawObject = resolveStoredRawObject(token.raw);
+
+    if (rawObject) {
+      return {
+        valueKind: "literal",
+        rawValue: JSON.stringify(rawObject, null, 2),
+      };
+    }
+  }
+
   if (token.type && isCompositeTokenType(token.type)) {
     const rawObject = resolveCompositeRawObject(token, mode);
 
@@ -212,6 +224,11 @@ export function applyDraftToRow(
 
     return {
       ...row,
+      ...(draft.description !== undefined ? { description: draft.description } : {}),
+      ...(draft.extensions !== undefined ? { extensions: draft.extensions } : {}),
+      ...(Object.hasOwn(draft, "colorModifier")
+        ? { colorModifier: draft.colorModifier ?? undefined }
+        : {}),
       modes: nextModes,
       value: formatDtcgTokenValue(rawModes, row.type),
     };
@@ -221,6 +238,11 @@ export function applyDraftToRow(
 
   return {
     ...row,
+    ...(draft.description !== undefined ? { description: draft.description } : {}),
+    ...(draft.extensions !== undefined ? { extensions: draft.extensions } : {}),
+    ...(Object.hasOwn(draft, "colorModifier")
+      ? { colorModifier: draft.colorModifier ?? undefined }
+      : {}),
     display,
     modes: undefined,
     value: formatDtcgTokenValue(formatted, row.type),
@@ -300,6 +322,9 @@ export function getEditableTokenMetadata(
   return {
     description: draft?.description ?? row.description ?? "",
     extensions: draft?.extensions ?? row.extensions,
+    colorModifier: draft?.colorModifier === null
+      ? undefined
+      : draft?.colorModifier ?? row.colorModifier,
   };
 }
 
@@ -309,7 +334,7 @@ export function buildDraftFromRow(
   valueKind: TokenValueKind,
   rawValue: string,
   operation?: TokenDraftOperation,
-  metadata?: Pick<TokenDraft, "description" | "extensions">
+  metadata?: Pick<TokenDraft, "description" | "extensions" | "colorModifier">
 ): TokenDraft {
   return {
     tokenId: row.id,
@@ -328,6 +353,11 @@ export function buildDraftFromRow(
       : row.extensions
         ? { extensions: row.extensions }
         : {}),
+    ...(metadata && Object.hasOwn(metadata, "colorModifier")
+      ? { colorModifier: metadata.colorModifier ?? null }
+      : row.colorModifier
+        ? { colorModifier: row.colorModifier }
+        : {}),
   };
 }
 
@@ -344,6 +374,7 @@ export function buildCreateDraft(input: {
   rawValue: string;
   description?: string;
   extensions?: TokenExtensions;
+  colorModifier?: TokenColorModifier;
 }): TokenDraft {
   return {
     tokenId: buildPendingTokenId(input.fileId, input.path),
@@ -356,6 +387,7 @@ export function buildCreateDraft(input: {
     operation: "create",
     ...(input.description?.trim() ? { description: input.description.trim() } : {}),
     ...(input.extensions ? { extensions: input.extensions } : {}),
+    ...(input.colorModifier ? { colorModifier: input.colorModifier } : {}),
   };
 }
 

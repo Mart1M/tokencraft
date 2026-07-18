@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState, type PointerEvent } from "react";
 import { GitPullRequest, Settings } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { SidebarCollections } from "@/components/sidebar-collections";
+import { ThemeSwitcher } from "@/components/theme-switcher";
 import { WorkspaceSwitcher } from "@/components/workspace-switcher";
 
 import type { TokenSidebarCollection } from "@/lib/tokens/entries";
@@ -19,22 +21,45 @@ export function MainSidebar({
   collections?: TokenSidebarCollection[];
 }) {
   const pathname = usePathname();
+  const [sidebarWidth, setSidebarWidth] = useState(256);
   const workspaceSlug = pathname.match(/\/dashboard\/workspaces\/([^/]+)/)?.[1];
   const settingsHref = workspaceSlug
     ? `/dashboard/workspaces/${encodeURIComponent(workspaceSlug)}/settings`
     : "/dashboard";
 
+  function startResize(event: PointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+
+    function resize(moveEvent: globalThis.PointerEvent) {
+      setSidebarWidth(Math.min(400, Math.max(200, startWidth + moveEvent.clientX - startX)));
+    }
+
+    function stopResize() {
+      window.removeEventListener("pointermove", resize);
+      window.removeEventListener("pointerup", stopResize);
+    }
+
+    window.addEventListener("pointermove", resize);
+    window.addEventListener("pointerup", stopResize, { once: true });
+  }
+
   return (
-    <aside className="app-sidebar sticky left-0 top-0 z-50 flex h-screen w-64 shrink-0 flex-col overflow-visible border-r border-sidebar-border bg-sidebar">
+    <aside
+      className="app-sidebar relative sticky left-0 top-0 z-50 flex h-screen shrink-0 flex-col overflow-visible border-r border-sidebar-border bg-sidebar"
+      style={{ width: sidebarWidth }}
+    >
       <div className="flex h-[57px] min-w-0 items-center gap-1 border-b border-sidebar-border px-4">
         <Link
           href="/dashboard"
           className="flex min-w-0 flex-1 items-center gap-2"
         >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary">
             <svg
-              width="21"
-              height="24"
+              width="15"
+              height="17"
               viewBox="0 0 21 24"
               fill="none"
               xmlns="http://www.w3.org/2000/svg"
@@ -45,7 +70,7 @@ export function MainSidebar({
               />
             </svg>
           </div>
-          <span className="min-w-0 truncate font-serif text-xl font-semibold text-sidebar-foreground">
+          <span className="min-w-0 truncate text-[17px] font-semibold tracking-[-0.025em] text-sidebar-foreground">
             Tokencraft
           </span>
         </Link>
@@ -56,7 +81,7 @@ export function MainSidebar({
       </div>
 
       <div
-        className="flex min-h-0 flex-1 flex-col overflow-x-hidden px-3 pb-4"
+        className="flex min-h-0 flex-1 flex-col overflow-x-hidden px-3 pb-4 pt-3"
         style={{ paddingLeft: 12, paddingRight: 12 }}
       >
         {showCollections ? (
@@ -64,10 +89,7 @@ export function MainSidebar({
         ) : null}
       </div>
 
-      <div
-        className="flex flex-col overflow-x-hidden border-t border-sidebar-border p-3"
-        style={{ gap: 8, padding: 12 }}
-      >
+      <div className="flex items-center gap-1 overflow-x-hidden border-t border-sidebar-border p-3">
         <Link
           href={settingsHref}
           className={cn(
@@ -80,7 +102,15 @@ export function MainSidebar({
           <Settings className="h-4 w-4 shrink-0" />
           <span className="truncate">Settings</span>
         </Link>
+        <ThemeSwitcher />
       </div>
+
+      <button
+        type="button"
+        aria-label="Resize main sidebar"
+        onPointerDown={startResize}
+        className="absolute inset-y-0 right-0 z-[60] w-1 cursor-col-resize touch-none bg-transparent transition-colors hover:bg-primary/50 focus-visible:bg-primary/50 focus-visible:outline-none"
+      />
     </aside>
   );
 }

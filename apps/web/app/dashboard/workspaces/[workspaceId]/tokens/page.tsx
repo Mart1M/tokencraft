@@ -1,7 +1,6 @@
 "use client";
 
 import { use } from "react";
-import { ChevronRight } from "lucide-react";
 
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { TokenExplorerWorkspace } from "@/components/token-explorer-workspace";
@@ -34,14 +33,6 @@ function TokenExplorerPageContent() {
   const modes = data?.modes ?? [];
   const settingsHref = workspaceSettingsPath(workspace.slug);
 
-  const headerTitle = (
-    <span className="flex items-center gap-2 text-sm">
-      <span className="text-muted-foreground">{workspace.name}</span>
-      <ChevronRight size={14} className="text-muted-foreground" />
-      <span className="font-medium text-foreground">Tokens</span>
-    </span>
-  );
-
   return (
     <DashboardLayout
       showTokensSidebar
@@ -55,7 +46,7 @@ function TokenExplorerPageContent() {
         </div>
       ) : (
         <TokenExplorerWorkspace
-          title={headerTitle}
+          workspaceName={workspace.name}
           tokens={tokens}
           settingsHref={settingsHref}
           collections={collections.map((collection) => ({

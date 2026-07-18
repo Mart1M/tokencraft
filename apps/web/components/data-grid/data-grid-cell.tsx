@@ -35,7 +35,11 @@ function tokenGridRowSignature(row: TokenGridRow) {
     .map(([mode, value]) => `${mode}:${value?.kind ?? ""}:${value?.text ?? ""}`)
     .join(",");
 
-  return `${row.name}\0${row.typeLabel}\0${row.draftStatus ?? ""}\0${modeValuesSignature}`;
+  const resolvedColorsSignature = Object.entries(row.resolvedColors)
+    .map(([mode, color]) => `${mode}:${color ?? ""}`)
+    .join(",");
+
+  return `${row.name}\0${row.typeLabel}\0${row.draftStatus ?? ""}\0${modeValuesSignature}\0${resolvedColorsSignature}`;
 }
 
 export const DataGridCell = React.memo(DataGridCellImpl, (prev, next) => {

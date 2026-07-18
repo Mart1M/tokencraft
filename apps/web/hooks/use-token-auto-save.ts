@@ -1,20 +1,13 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useWorkspaceData } from "@/components/workspace-data-provider";
-import { useDebouncedCallback } from "@/hooks/use-debounced-callback";
 import { useTokenDraftStore } from "@/lib/tokens/draft-store";
 
 export type TokenAutoSaveStatus = "idle" | "saving" | "saved" | "error";
 
-const AUTO_SAVE_DELAY_MS = 700;
-const SAVED_STATUS_RESET_MS = 2000;
-
-/**
- * Persists token drafts and pending collection deletes to disk automatically,
- * shortly after they change, instead of requiring an explicit "Save" action.
- */
+/** Applies staged workspace changes only when the user confirms the review. */
 export function useTokenAutoSave() {
   const { workspace, refresh } = useWorkspaceData();
   const drafts = useTokenDraftStore((state) => state.drafts);
@@ -22,37 +15,41 @@ export function useTokenAutoSave() {
     (state) => state.pendingCollectionDeletes,
   );
   const reset = useTokenDraftStore((state) => state.reset);
+  const pendingCollectionCreates = useTokenDraftStore((state) => state.pendingCollectionCreates);
+  const pendingModeChanges = useTokenDraftStore((state) => state.pendingModeChanges);
 
   const [status, setStatus] = useState<TokenAutoSaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
-  const isSavingRef = useRef(false);
+  const hasLocalEdits =
+    Object.keys(drafts).length > 0 ||
+    pendingCollectionDeletes.length > 0 ||
+    Object.keys(pendingCollectionCreates).length > 0 ||
+    Object.keys(pendingModeChanges).length > 0;
 
-  const scheduleSave = useDebouncedCallback(async () => {
-    if (!workspace || isSavingRef.current) {
+  useEffect(() => {
+    if (hasLocalEdits && status === "saved") {
+      setStatus("idle");
+    }
+  }, [hasLocalEdits, status]);
+
+  async function save() {
+    if (!workspace || !hasLocalEdits || status === "saving") {
       return;
     }
-
-    const current = useTokenDraftStore.getState();
-
-    if (
-      Object.keys(current.drafts).length === 0 &&
-      current.pendingCollectionDeletes.length === 0
-    ) {
-      return;
-    }
-
-    isSavingRef.current = true;
     setStatus("saving");
     setError(null);
 
     try {
-      const response = await fetch("/api/workspaces/tokens/save", {
+      const current = useTokenDraftStore.getState();
+      const response = await fetch("/api/workspaces/changes/apply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           rootPath: workspace.rootPath,
           drafts: Object.values(current.drafts),
           pendingCollectionDeletes: current.pendingCollectionDeletes,
+          collectionCreates: Object.values(current.pendingCollectionCreates),
+          modeChanges: Object.values(current.pendingModeChanges),
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -67,31 +64,8 @@ export function useTokenAutoSave() {
     } catch (saveError) {
       setStatus("error");
       setError(saveError instanceof Error ? saveError.message : "Save failed.");
-    } finally {
-      isSavingRef.current = false;
     }
-  }, AUTO_SAVE_DELAY_MS);
+  }
 
-  const hasLocalEdits =
-    Object.keys(drafts).length > 0 || pendingCollectionDeletes.length > 0;
-
-  useEffect(() => {
-    if (hasLocalEdits) {
-      scheduleSave();
-    }
-    // scheduleSave reads the freshest store state itself; we only need to
-    // re-trigger it when drafts/deletes change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drafts, pendingCollectionDeletes]);
-
-  useEffect(() => {
-    if (status !== "saved") {
-      return;
-    }
-
-    const timeout = setTimeout(() => setStatus("idle"), SAVED_STATUS_RESET_MS);
-    return () => clearTimeout(timeout);
-  }, [status]);
-
-  return { status, error };
+  return { status, error, hasLocalEdits, save };
 }

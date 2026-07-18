@@ -5,6 +5,8 @@ import { formatDraftValue } from "@/lib/tokens/draft-utils";
 import {
   compositeFieldValuesToObject,
   getDefaultLiteralValueForType,
+  parseCompositionFieldValues,
+  serializeCompositionFieldValues,
   serializeCompositeFieldValues,
 } from "@/lib/tokens/value-editor";
 
@@ -42,6 +44,30 @@ describe("composite token value editor", () => {
       blur: "0px",
       spread: "0px",
       color: "#000000",
+    });
+  });
+
+  it("keeps composition values as free-form objects", () => {
+    const rawValue = getDefaultLiteralValueForType("composition");
+
+    expect(rawValue).toBe("{}");
+    expect(
+      formatDraftValue({
+        valueKind: "literal",
+        rawValue: '{"icon":"{vp.semantic.icon.chevron}"}',
+        type: "composition",
+      }),
+    ).toEqual({ icon: "{vp.semantic.icon.chevron}" });
+
+    const fields = parseCompositionFieldValues(
+      '{"typography":"{vp.semantic.typography.mobile.body-m}"}',
+    );
+
+    expect(fields).toEqual([
+      { key: "typography", value: "{vp.semantic.typography.mobile.body-m}" },
+    ]);
+    expect(JSON.parse(serializeCompositionFieldValues(fields))).toEqual({
+      typography: "{vp.semantic.typography.mobile.body-m}",
     });
   });
 });

@@ -18,6 +18,16 @@ const saveSchema = z.object({
       operation: z.enum(["create", "update", "delete"]).optional(),
       description: z.string().optional(),
       extensions: z.record(z.string(), z.string()).optional(),
+      colorModifier: z
+        .object({
+          type: z.enum(["lighten", "darken", "alpha", "mix"]),
+          space: z.enum(["srgb", "p3", "hsl", "lch"]),
+          value: z.string().min(1),
+          color: z.string().optional(),
+          format: z.string().optional(),
+        })
+        .nullable()
+        .optional(),
     })
   ),
   pendingCollectionDeletes: z.array(z.string()).optional(),

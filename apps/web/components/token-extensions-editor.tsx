@@ -41,9 +41,9 @@ export function TokenExtensionsEditor({
       className="space-y-3"
     >
       <KeyValueList>
-        <KeyValueItem className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-start gap-2">
-          <KeyValueKeyInput className="font-mono text-sm" />
-          <KeyValueValueInput className="font-mono text-sm" />
+        <KeyValueItem className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)_auto] items-center gap-2">
+          <KeyValueKeyInput className="min-w-0 font-mono text-sm" />
+          <KeyValueValueInput className="h-9 min-h-9 w-full min-w-0 field-sizing-fixed font-mono text-sm" />
           <KeyValueRemove variant="ghost" size="icon-sm" className="mt-0.5 shrink-0" />
         </KeyValueItem>
       </KeyValueList>

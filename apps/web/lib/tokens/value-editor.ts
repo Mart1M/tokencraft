@@ -4,6 +4,36 @@ import {
 } from "@/lib/tokens/composite-fields";
 import type { StoredTokenRawValue } from "@/lib/tokens/raw-value";
 
+export type CompositionFieldValue = {
+  key: string;
+  value: string;
+};
+
+export function parseCompositionFieldValues(rawValue: string): CompositionFieldValue[] {
+  const parsed = tryParseJsonValue(rawValue);
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return [];
+  }
+
+  return Object.entries(parsed as Record<string, unknown>).map(([key, value]) => ({
+    key,
+    value: typeof value === "string" ? value : JSON.stringify(value),
+  }));
+}
+
+export function serializeCompositionFieldValues(fields: CompositionFieldValue[]) {
+  return JSON.stringify(
+    Object.fromEntries(
+      fields
+        .map((field) => [field.key.trim(), field.value] as const)
+        .filter(([key]) => Boolean(key)),
+    ),
+    null,
+    2,
+  );
+}
+
 export function getDefaultLiteralValueForType(type: string) {
   if (type === "color") {
     return "#0066FF";
@@ -27,6 +57,10 @@ export function getDefaultLiteralValueForType(type: string) {
 
   if (type === "cubicBezier") {
     return "0, 0, 0.2, 1";
+  }
+
+  if (type === "composition") {
+    return "{}";
   }
 
   if (isCompositeTokenType(type)) {
