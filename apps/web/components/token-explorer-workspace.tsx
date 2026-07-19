@@ -116,6 +116,13 @@ export function TokenExplorerWorkspace({
     return () => window.removeEventListener("beforeunload", preventExit);
   }, [hasLocalEdits]);
 
+  async function handleSave() {
+    await save();
+    if (useTokenDraftStore.getState().hasLocalEdits() === false) {
+      setReviewOpen(false);
+    }
+  }
+
   return (
     <>
       <div
@@ -130,9 +137,28 @@ export function TokenExplorerWorkspace({
             actions={
               <div className="flex items-center gap-3">
                 <TokenAutoSaveStatus status={status} error={error} />
-                <Button type="button" size="sm" variant="outline" onClick={() => setReviewOpen(true)}>
-                  Changes ({changeCount})
-                </Button>
+                <div className="inline-flex items-center">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => void handleSave()}
+                    disabled={!changeCount || status === "saving"}
+                    className="rounded-r-none"
+                  >
+                    {status === "saving" ? "Saving…" : "Save"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    aria-label={`Review ${changeCount} change${changeCount === 1 ? "" : "s"}`}
+                    onClick={() => setReviewOpen(true)}
+                    className="rounded-l-none border-l-0 px-2.5 font-mono tabular-nums"
+                  >
+                    {changeCount}
+                  </Button>
+                </div>
                 {canAddToken ? (
                   <Button
                     type="button"
@@ -168,12 +194,7 @@ export function TokenExplorerWorkspace({
         collections={collections}
         status={status}
         error={error}
-        onSave={async () => {
-          await save();
-          if (useTokenDraftStore.getState().hasLocalEdits() === false) {
-            setReviewOpen(false);
-          }
-        }}
+        onSave={handleSave}
       />
     </>
   );

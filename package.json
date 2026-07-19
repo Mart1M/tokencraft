@@ -14,6 +14,7 @@
     "build": "pnpm --filter @tokencraft/web build",
     "build:docs": "pnpm --filter @tokencraft/docs build",
     "build:cli": "pnpm --filter tokencraft build",
+    "build:figma-plugin": "pnpm --filter @tokencraft/figma-plugin build",
     "lint": "pnpm --filter @tokencraft/web lint",
     "test": "pnpm --filter @tokencraft/web test",
     "typecheck": "pnpm -r typecheck"

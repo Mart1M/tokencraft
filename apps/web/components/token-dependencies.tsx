@@ -68,7 +68,7 @@ export function TokenDependencies({
       <div>
         <h3 className="text-sm font-medium">Dependencies</h3>
         <p className="text-xs text-muted-foreground">
-          Resolved for {mode ?? "Default"}, including unsaved changes.
+          Links across all modes, including unsaved changes.
         </p>
       </div>
 

@@ -30,6 +30,7 @@ type WorkspaceDataContextValue = {
 };
 
 const WorkspaceDataContext = createContext<WorkspaceDataContextValue | null>(null);
+const FIGMA_BRIDGE_URL = "ws://localhost:4288";
 
 export function WorkspaceDataProvider({
   workspaceId,
@@ -92,6 +93,36 @@ export function WorkspaceDataProvider({
       void refresh();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace]);
+
+  useEffect(() => {
+    if (!workspace) return;
+
+    let socket: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let isDisposed = false;
+
+    const connectBridge = () => {
+      socket = new WebSocket(FIGMA_BRIDGE_URL);
+      socket.addEventListener("open", () => {
+        socket?.send(JSON.stringify({ type: "activate-workspace", rootPath: workspace.rootPath }));
+      });
+
+      // The bridge can restart independently from the dashboard. Reassert the
+      // workspace currently displayed in TokenCraft when it becomes available.
+      socket.addEventListener("close", () => {
+        if (!isDisposed) reconnectTimer = setTimeout(connectBridge, 1_000);
+      });
+      socket.addEventListener("error", () => {});
+    };
+
+    connectBridge();
+
+    return () => {
+      isDisposed = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      socket?.close();
+    };
   }, [workspace]);
 
   return (

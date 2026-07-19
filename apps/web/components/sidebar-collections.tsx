@@ -2,10 +2,11 @@
 
 import { useMemo, useState } from "react";
 import {
+  BookText,
   Folder,
-  FolderOpen,
   Plus,
   Search,
+  Trash2,
 } from "lucide-react";
 
 import { useSidebarStore } from "@/lib/sidebar-store";
@@ -14,6 +15,12 @@ import { useTokenExplorer } from "@/components/token-explorer-provider";
 import { useWorkspaceData } from "@/components/workspace-data-provider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { TreeView, type TreeDataItem } from "@/components/ui/tree-view";
 import { normalizeCollectionPath } from "@/lib/tokens/collection-path";
 import {
@@ -138,9 +145,15 @@ export function SidebarCollections({
     (state) => state.setCreateCollectionDialogOpen,
   );
   const stageCollectionCreate = useTokenDraftStore((state) => state.stageCollectionCreate);
+  const markCollectionForDelete = useTokenDraftStore((state) => state.markCollectionForDelete);
+  const unmarkCollectionForDelete = useTokenDraftStore((state) => state.unmarkCollectionForDelete);
+  const clearCollectionCreate = useTokenDraftStore((state) => state.clearCollectionCreate);
+  const pendingCollectionDeletes = useTokenDraftStore((state) => state.pendingCollectionDeletes);
   const pendingCollectionCreates = useTokenDraftStore(
     (state) => state.pendingCollectionCreates,
   );
+  const [contextCollection, setContextCollection] = useState<TokenSidebarCollection | null>(null);
+  const [contextPosition, setContextPosition] = useState({ x: 0, y: 0 });
 
   const displayedCollections = useMemo<TokenSidebarCollection[]>(() => {
     const existingPaths = new Set(collections.map((collection) => collection.path));
@@ -153,8 +166,14 @@ export function SidebarCollections({
         modes: ["Default"],
       }));
 
-    return [...collections, ...stagedCollections];
-  }, [collections, pendingCollectionCreates]);
+    return [
+      ...collections.map((collection) => ({
+        ...collection,
+        ...(pendingCollectionDeletes.includes(collection.id) ? { pendingDelete: true } : {}),
+      })),
+      ...stagedCollections,
+    ];
+  }, [collections, pendingCollectionCreates, pendingCollectionDeletes]);
 
   const isSearching = searchQuery.trim().length > 0;
 
@@ -178,7 +197,16 @@ export function SidebarCollections({
           value: node,
           title: collection?.name ?? node.label,
           ...(collection
-            ? { onClick: () => setSelectedCollectionId(collection.id) }
+            ? {
+                onClick: () => setSelectedCollectionId(collection.id),
+                onContextMenu: (event: React.MouseEvent<HTMLButtonElement>) => {
+                  event.preventDefault();
+                  setSelectedCollectionId(collection.id);
+                  setContextCollection(collection);
+                  setContextPosition({ x: event.clientX, y: event.clientY });
+                },
+                className: collection.pendingDelete ? "text-muted-foreground line-through" : undefined,
+              }
             : {}),
           ...(node.children.length
             ? { children: node.children.map(toTreeItem) }
@@ -187,6 +215,32 @@ export function SidebarCollections({
       }),
     [tree, setSelectedCollectionId],
   );
+
+  function closeContextMenu() {
+    setContextCollection(null);
+  }
+
+  function handleDeleteCollection() {
+    const collection = contextCollection;
+    if (!collection) return;
+
+    if (collection.id.startsWith("create:")) {
+      clearCollectionCreate(collection.id);
+      closeContextMenu();
+      return;
+    }
+
+    if (collection.pendingDelete) {
+      unmarkCollectionForDelete(collection.id);
+      closeContextMenu();
+      return;
+    }
+
+    if (window.confirm(`Delete collection “${collection.name}”? The file will be deleted when you save the pending changes.`)) {
+      markCollectionForDelete(collection.id);
+    }
+    closeContextMenu();
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col pb-3">
@@ -220,7 +274,7 @@ export function SidebarCollections({
             renderItem={({ item }) =>
               item.value?.collection ? (
                 <>
-                  <FolderOpen className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <BookText className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <span className="truncate">{item.name}</span>
                 </>
               ) : (
@@ -248,6 +302,30 @@ export function SidebarCollections({
           }}
         />
       ) : null}
+
+      <DropdownMenu open={Boolean(contextCollection)} onOpenChange={(open) => !open && closeContextMenu()}>
+        <DropdownMenuTrigger
+          aria-hidden="true"
+          style={{
+            position: "fixed",
+            left: contextPosition.x,
+            top: contextPosition.y,
+            width: 1,
+            height: 1,
+            pointerEvents: "none",
+          }}
+        />
+        <DropdownMenuContent align="start" className="w-48">
+          <DropdownMenuItem variant="destructive" onSelect={handleDeleteCollection}>
+            <Trash2 />
+            {contextCollection?.id.startsWith("create:")
+              ? "Discard collection"
+              : contextCollection?.pendingDelete
+                ? "Restore collection"
+                : "Delete collection"}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

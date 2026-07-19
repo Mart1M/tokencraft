@@ -1,0 +1,23 @@
+{
+  "gg": {
+    "$type": "color",
+    "$value": {
+      "Mode 1": "#ce4545",
+      "Mode 2": "#4b4949"
+    }
+  },
+  "Color": {
+    "$type": "color",
+    "$value": {
+      "Mode 1": "{gg}",
+      "Mode 2": "{gg}"
+    }
+  },
+  "new-variable2": {
+    "$type": "number",
+    "$value": {
+      "Mode 1": 23,
+      "Mode 2": 22
+    }
+  }
+}

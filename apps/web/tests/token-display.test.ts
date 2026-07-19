@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { buildTokenDisplayValue, parseStringIntoComposite, resolveDisplayColor } from "@/lib/tokens/display";
+import { buildTokenDisplayValue, formatColorAlphaForDisplay, parseStringIntoComposite, resolveDisplayColor } from "@/lib/tokens/display";
 
 describe("composite token display", () => {
+  it("does not mistake a serialized composite object for an alias", () => {
+    const display = buildTokenDisplayValue(
+      '{"fontFamily":"Inter, sans-serif","fontSize":"16px","fontWeight":"400","lineHeight":"24px"}',
+      "typography",
+    );
+
+    expect(display.kind).not.toBe("alias");
+  });
+
   it("renders border values with alias tags", () => {
     const display = buildTokenDisplayValue(
       {
@@ -122,6 +131,11 @@ describe("composite token display", () => {
 });
 
 describe("hex color display", () => {
+  it("separates hex alpha into a readable percentage", () => {
+    expect(formatColorAlphaForDisplay("#d0f40033")).toEqual({ hex: "#d0f400", alphaPercent: 20 });
+    expect(formatColorAlphaForDisplay("#d0f400")).toBeNull();
+  });
+
   it("detects hex colors without an explicit token type", () => {
     expect(buildTokenDisplayValue("#3b82f6")).toEqual({
       kind: "color",
@@ -167,5 +181,22 @@ describe("hex color display", () => {
       text: "#112233",
       color: "#112233",
     });
+  });
+});
+
+describe("collection mode values", () => {
+  it("shows a scalar token in Figma's single custom mode", async () => {
+    const { getRowModeDisplayValue } = await import("@/lib/tokens/display");
+
+    expect(
+      getRowModeDisplayValue(
+        {
+          value: "#ff9463",
+          type: "color",
+          display: { kind: "color", text: "#ff9463", color: "#ff9463" },
+        },
+        "Value",
+      ),
+    ).toEqual({ kind: "color", text: "#ff9463", color: "#ff9463" });
   });
 });

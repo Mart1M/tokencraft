@@ -17,6 +17,7 @@ export type TreeDataItem<T = unknown> = {
   value?: T;
   actions?: React.ReactNode;
   onClick?: () => void;
+  onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void;
   className?: string;
   title?: string;
 };
@@ -132,6 +133,7 @@ function TreeItem<T>({
           type="button"
           title={item.title ?? item.name}
           onClick={handleItemClick}
+          onContextMenu={item.onContextMenu}
           className={cn(
             "flex min-w-0 flex-1 items-center gap-2 rounded-sm px-2 py-1.5 text-left text-sm transition-colors",
             isSelected

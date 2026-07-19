@@ -100,7 +100,7 @@ export function formatDraftValue(
 }
 
 export function inferValueKind(value: string, type?: string): TokenValueKind {
-  if (/^\{[^}]+\}$/.test(value.trim())) {
+  if (/^\{[\w./-]+\}$/.test(value.trim())) {
     return "alias";
   }
 
@@ -174,21 +174,31 @@ function resolveCompositeRawObject(
   token: ImportedTokenRow,
   mode: string | null
 ): Record<string, unknown> | null {
-  if (mode && token.modes) {
-    const modeKey = mode ? resolveModeKey(token.modes, mode) : null;
+  const raw = resolveStoredRawObject(token.raw);
+  if (!raw) return null;
 
-    if (modeKey) {
-      // Mode values are display-only here; fall back to top-level raw below.
+  if (mode && token.modes) {
+    const modeKey = resolveModeKey(token.modes, mode);
+    const modeValue = modeKey ? raw[modeKey] : undefined;
+    if (modeValue && typeof modeValue === "object" && !Array.isArray(modeValue)) {
+      return modeValue as Record<string, unknown>;
     }
   }
 
-  return resolveStoredRawObject(token.raw);
+  return raw;
 }
 
 function resolveCompositeRawArray(
   token: ImportedTokenRow,
-  _mode: string | null
+  mode: string | null
 ) {
+  if (mode && token.modes) {
+    const modeKey = resolveModeKey(token.modes, mode);
+    const raw = resolveStoredRawObject(token.raw);
+    const modeValue = modeKey ? raw?.[modeKey] : undefined;
+    if (Array.isArray(modeValue)) return modeValue;
+  }
+
   return resolveStoredRawArray(token.raw);
 }
 

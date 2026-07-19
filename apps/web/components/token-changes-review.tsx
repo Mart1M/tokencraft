@@ -3,6 +3,13 @@
 import { FileDiff, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { useTokenDraftStore } from "@/lib/tokens/draft-store";
 import type { TokenDraft } from "@/lib/tokens/draft-utils";
 import type { ImportedTokenRow } from "@/lib/tokens/entries";
@@ -116,23 +123,21 @@ export function TokenChangesReview({
   const clearModeChange = useTokenDraftStore((state) => state.clearModeChange);
   const clearAllDrafts = useTokenDraftStore((state) => state.clearAllDrafts);
 
-  if (!open) return null;
-
   const collectionName = (id: string) => collections.find((collection) => collection.id === id)?.name ?? "Unknown collection";
   const draftEntries = Object.entries(drafts);
   const changeCount = getWorkspaceChangeCount({ drafts, pendingCollectionDeletes, pendingCollectionCreates, pendingModeChanges });
 
   return (
-    <div className="fixed inset-0 z-[70] flex justify-end bg-black/40" role="dialog" aria-modal="true" aria-label="Review changes">
-      <section className="flex h-full w-full max-w-2xl flex-col border-l bg-background shadow-2xl">
-        <header className="flex items-center justify-between border-b px-5 py-3">
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent className="max-w-2xl shadow-xl">
+        <SheetHeader className="flex-row items-center justify-between border-b px-5 py-3">
           <div className="flex items-center gap-2">
             <FileDiff className="size-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Changes</h2>
+            <SheetTitle>Changes</SheetTitle>
             <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">{changeCount}</span>
           </div>
           <Button type="button" size="icon-sm" variant="ghost" onClick={() => onOpenChange(false)} aria-label="Close review"><X className="size-4" /></Button>
-        </header>
+        </SheetHeader>
 
         <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-5">
           {draftEntries.map(([key, draft]) => {
@@ -165,11 +170,11 @@ export function TokenChangesReview({
           {error ? <p className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">{error}</p> : null}
         </div>
 
-        <footer className="flex items-center justify-between border-t px-5 py-3">
+        <SheetFooter className="justify-between border-t px-5 py-3">
           <Button type="button" size="sm" variant="ghost" disabled={!changeCount || status === "saving"} onClick={clearAllDrafts}>Discard all</Button>
           <Button type="button" size="sm" disabled={!changeCount || status === "saving"} onClick={() => void onSave()}>{status === "saving" ? "Saving…" : "Save changes"}</Button>
-        </footer>
-      </section>
-    </div>
+        </SheetFooter>
+      </SheetContent>
+    </Sheet>
   );
 }

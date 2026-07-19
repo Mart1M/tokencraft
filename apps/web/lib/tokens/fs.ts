@@ -427,7 +427,12 @@ export async function writeWorkspaceTokenDrafts(
       continue;
     }
 
-    await fs.unlink(toAbsolutePath(rootPath, file.path)).catch(() => {});
+    try {
+      await fs.unlink(toAbsolutePath(rootPath, file.path));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    await unregisterFileInWorkspaceConfig(rootPath, file.path);
     savedFileCount += 1;
   }
 
@@ -460,7 +465,8 @@ function validateCollectionPath(relativePath: string) {
 async function registerFileInWorkspaceConfig(
   rootPath: string,
   relativePath: string,
-  collectionName?: string
+  collectionName?: string,
+  modes?: string[],
 ) {
   const config =
     (await readWorkspaceConfig(rootPath)) ??
@@ -469,19 +475,25 @@ async function registerFileInWorkspaceConfig(
       files: [],
     };
 
-  if (config.files.includes(relativePath)) {
+  const name = collectionName?.trim();
+  const existingCollection = config.fileCollections?.[relativePath];
+  if (
+    config.files.includes(relativePath)
+    && (!name || (existingCollection?.name === name && JSON.stringify(existingCollection.modes ?? []) === JSON.stringify(modes ?? [])))
+  ) {
     return;
   }
 
   const updated: ParsedWorkspaceConfig = {
     ...config,
-    files: [...config.files, relativePath],
-    ...(config.fileCollections
+    files: [...new Set([...config.files, relativePath])],
+    ...(name
       ? {
           fileCollections: {
             ...config.fileCollections,
             [relativePath]: {
-              name: collectionName?.trim() || formatCollectionName(relativePath),
+              name,
+              ...(modes?.length ? { modes } : {}),
             },
           },
         }
@@ -492,6 +504,28 @@ async function registerFileInWorkspaceConfig(
     path.join(rootPath, TOKENCRAFT_CONFIG_FILENAME),
     buildTokencraftConfigContent(updated),
     "utf8"
+  );
+}
+
+async function unregisterFileInWorkspaceConfig(rootPath: string, relativePath: string) {
+  const config = await readWorkspaceConfig(rootPath);
+  if (!config?.files.includes(relativePath)) return;
+
+  const fileCollections = config.fileCollections
+    ? Object.fromEntries(
+        Object.entries(config.fileCollections).filter(([path]) => path !== relativePath),
+      )
+    : undefined;
+  const updated: ParsedWorkspaceConfig = {
+    ...config,
+    files: config.files.filter((path) => path !== relativePath),
+    ...(fileCollections ? { fileCollections } : {}),
+  };
+
+  await writeFileAtomic(
+    path.join(rootPath, TOKENCRAFT_CONFIG_FILENAME),
+    buildTokencraftConfigContent(updated),
+    "utf8",
   );
 }
 
@@ -517,4 +551,78 @@ export async function createTokenFile(
   await registerFileInWorkspaceConfig(rootPath, normalized, collectionName);
 
   return inspectTokenJson(normalized, "{}");
+}
+
+export type FigmaCollectionExportInput = {
+  name: string;
+  modes: string[];
+  tokens: Array<{
+    name: string;
+    type: "color" | "number" | "boolean" | "string";
+    values: Record<string, string | number | boolean>;
+  }>;
+};
+
+function toFigmaExportPath(collectionName: string) {
+  const slug = collectionName
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${slug || "collection"}.tokens.json`;
+}
+
+function setDtcgToken(target: Record<string, unknown>, token: FigmaCollectionExportInput["tokens"][number], modes: string[]) {
+  const segments = token.name.split("/").map((segment) => segment.trim()).filter(Boolean);
+  if (!segments.length) return;
+
+  let group = target;
+  for (const segment of segments.slice(0, -1)) {
+    const existing = group[segment];
+    if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+      group[segment] = {};
+    }
+    group = group[segment] as Record<string, unknown>;
+  }
+
+  const defaultMode = modes.find((mode) => mode.toLowerCase() === "default") ?? modes[0];
+  const value = modes.length <= 1
+    ? token.values[defaultMode] ?? Object.values(token.values)[0]
+    : Object.fromEntries(
+        modes
+          .filter((mode) => token.values[mode] !== undefined)
+          .map((mode) => [mode, token.values[mode]]),
+      );
+
+  if (value === undefined) return;
+  group[segments.at(-1)!] = { $type: token.type, $value: value };
+}
+
+export async function exportFigmaCollection(
+  rootPath: string,
+  input: FigmaCollectionExportInput,
+) {
+  const name = input.name.trim();
+  if (!name) throw new WorkspaceFsError("Figma collection name is required.");
+  if (!input.tokens.length) throw new WorkspaceFsError("Figma collection has no supported Variables.");
+
+  const relativePath = toFigmaExportPath(name);
+  const absolutePath = toAbsolutePath(rootPath, relativePath);
+  try {
+    await fs.access(absolutePath);
+    throw new WorkspaceFsError("A TokenCraft collection already exists at this export path.", 409);
+  } catch (error) {
+    if (error instanceof WorkspaceFsError) throw error;
+  }
+
+  const document: Record<string, unknown> = {};
+  const modes = input.modes.length ? input.modes : ["Default"];
+  for (const token of input.tokens) setDtcgToken(document, token, modes);
+
+  await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFileAtomic(absolutePath, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+  await registerFileInWorkspaceConfig(rootPath, relativePath, name, modes);
+
+  return inspectTokenJson(relativePath, JSON.stringify(document));
 }

@@ -60,6 +60,31 @@ describe("getEditableRawValue with a newly added mode", () => {
 
     expect(editable).toEqual({ valueKind: "literal", rawValue: "#000000" });
   });
+
+  it("keeps a composite typography value literal and reads the selected mode", () => {
+    const token: ImportedTokenRow = {
+      id: "core:typo.body",
+      fileId: "core",
+      sourcePath: "tokens/core.json",
+      collectionName: "core",
+      name: "typo.body",
+      type: "typography",
+      value: "typography",
+      raw: {
+        "Mode 1": { fontFamily: "Inter", fontSize: "16px", fontWeight: "400", lineHeight: "24px" },
+        "Mode 2": { fontFamily: "Inter", fontSize: "18px", fontWeight: "500", lineHeight: "28px" },
+      },
+      modes: {
+        "Mode 1": { kind: "composite", text: "fontSize: 16px" },
+        "Mode 2": { kind: "composite", text: "fontSize: 18px" },
+      },
+    };
+
+    expect(getEditableRawValue(token, "Mode 2")).toMatchObject({
+      valueKind: "literal",
+      rawValue: expect.stringContaining('"fontSize":"18px"'),
+    });
+  });
 });
 
 describe("applyDraftToRow with a newly added mode", () => {

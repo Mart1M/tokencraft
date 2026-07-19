@@ -182,3 +182,46 @@
 .empty-state-actions {
   @apply mt-6 flex flex-wrap items-center justify-center gap-3;
 }
+
+@keyframes sheet-overlay-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sheet-overlay-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes sheet-content-in-right {
+  from { transform: translateX(100%); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes sheet-content-out-right {
+  from { transform: translateX(0); }
+  to { transform: translateX(100%); }
+}
+
+.sheet-overlay[data-state="open"] {
+  animation: sheet-overlay-in 160ms ease-out both;
+}
+
+.sheet-overlay[data-state="closed"] {
+  animation: sheet-overlay-out 140ms ease-in both;
+}
+
+.sheet-content[data-side="right"][data-state="open"] {
+  animation: sheet-content-in-right 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.sheet-content[data-side="right"][data-state="closed"] {
+  animation: sheet-content-out-right 180ms cubic-bezier(0.7, 0, 0.84, 0) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-overlay,
+  .sheet-content {
+    animation: none;
+  }
+}

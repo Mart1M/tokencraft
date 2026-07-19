@@ -1,4 +1,15 @@
 {
   "version": 1,
-  "files": ["tokens/core.tokens.json", "tokens/semantic.tokens.json"]
+  "collections": [
+    {
+      "name": "TEST",
+      "files": [
+        "figma/test.tokens.json"
+      ],
+      "modes": [
+        "Mode 1",
+        "Mode 2"
+      ]
+    }
+  ]
 }

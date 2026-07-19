@@ -5,12 +5,38 @@ import { getImportedTokenRows, getTokenSidebarCollections } from "@/lib/tokens/e
 import { assertDirectory, readWorkspaceTokenFiles, WorkspaceFsError } from "@/lib/tokens/fs";
 import { sanitizeFolderPathInput } from "@/lib/tokens/path-input";
 
+const FIGMA_ORIGIN = "https://www.figma.com";
+
+function getCorsHeaders(request: Request): Record<string, string> {
+  const origin = request.headers.get("origin");
+
+  if (origin !== FIGMA_ORIGIN) {
+    return {};
+  }
+
+  return {
+    "Access-Control-Allow-Origin": FIGMA_ORIGIN,
+    "Vary": "Origin",
+  };
+}
+
+const preflightHeaders = {
+  "Access-Control-Allow-Origin": FIGMA_ORIGIN,
+  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Vary": "Origin",
+};
+
+export function OPTIONS(request: Request) {
+  const headers = getCorsHeaders(request);
+  return new Response(null, { status: 204, headers: Object.keys(headers).length ? preflightHeaders : {} });
+}
+
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const rawRootPath = searchParams.get("root");
 
   if (!rawRootPath) {
-    return NextResponse.json({ error: "A root path is required." }, { status: 400 });
+    return NextResponse.json({ error: "A root path is required." }, { status: 400, headers: getCorsHeaders(request) });
   }
 
   const rootPath = sanitizeFolderPathInput(rawRootPath);
@@ -28,10 +54,10 @@ export async function GET(request: Request) {
       collections,
       modes,
       tokenFileCount: files.length,
-    });
+    }, { headers: getCorsHeaders(request) });
   } catch (error) {
     if (error instanceof WorkspaceFsError) {
-      return NextResponse.json({ error: error.message }, { status: error.status });
+      return NextResponse.json({ error: error.message }, { status: error.status, headers: getCorsHeaders(request) });
     }
 
     throw error;

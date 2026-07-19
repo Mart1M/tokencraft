@@ -24,8 +24,11 @@ export const MODE_KEYS = new Set([
   "active",
 ]);
 
-const ALIAS_PATTERN = /^\{([^}]+)\}$/;
-const INLINE_ALIAS_PATTERN = /\{[^}]+\}/g;
+// A DTCG alias is a token path, not any text wrapped in braces. In
+// particular, JSON values such as {"fontFamily":"Inter"} must stay literal
+// composite values instead of being mistaken for one giant alias.
+const ALIAS_PATTERN = /^\{([\w./-]+)\}$/;
+const INLINE_ALIAS_PATTERN = /\{[\w./-]+\}/g;
 
 const COMPOSITE_FIELD_ORDER: Record<string, string[]> = {
   border: getCompositeFieldKeys("border"),
@@ -173,6 +176,37 @@ export function parseCssColor(value: string) {
   }
 
   return undefined;
+}
+
+export function formatColorAlphaForDisplay(value: string) {
+  const hex = value.trim().match(/^#([0-9a-f]{4}|[0-9a-f]{8})$/i);
+  if (hex) {
+    const expanded = hex[1].length === 4
+      ? hex[1].split("").map((channel) => channel + channel).join("")
+      : hex[1];
+    const alpha = Number.parseInt(expanded.slice(6, 8), 16);
+    if (alpha < 255) {
+      return {
+        hex: `#${expanded.slice(0, 6).toLowerCase()}`,
+        alphaPercent: Math.round((alpha / 255) * 100),
+      };
+    }
+  }
+
+  const rgba = value.trim().match(/^rgba\(\s*([\d.]+)[,\s]+\s*([\d.]+)[,\s]+\s*([\d.]+)(?:\s*[/,]\s*([\d.]+))?\s*\)$/i);
+  if (rgba && rgba[4] !== undefined) {
+    const channels = rgba.slice(1, 4).map(Number);
+    const alpha = Number(rgba[4]);
+    if (channels.every(Number.isFinite) && Number.isFinite(alpha) && alpha >= 0 && alpha < 1) {
+      const toHex = (channel: number) => Math.round(Math.min(255, Math.max(0, channel))).toString(16).padStart(2, "0");
+      return {
+        hex: `#${channels.map(toHex).join("")}`,
+        alphaPercent: Math.round(alpha * 100),
+      };
+    }
+  }
+
+  return null;
 }
 
 export function resolveDisplayColor(value: TokenDisplayValue): string | undefined {
@@ -538,11 +572,11 @@ export function getRowModeDisplayValue(
     return !activeMode ? Object.values(legacyModes)[0] ?? null : null;
   }
 
-  if (!activeMode) {
-    return row.display ?? buildTokenDisplayValueFromString(row.value, row.type);
-  }
-
-  return null;
+  // A token with a scalar value applies to the collection's only mode even
+  // when Figma gives that mode a custom name such as "Value". This is how
+  // Figma-only collections are exported: the mode name is preserved in the
+  // collection metadata while the DTCG token keeps its scalar value.
+  return row.display ?? buildTokenDisplayValueFromString(row.value, row.type);
 }
 
 export function getRowDisplayValue(

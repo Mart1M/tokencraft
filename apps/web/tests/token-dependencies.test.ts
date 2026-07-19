@@ -33,6 +33,12 @@ describe("token dependencies", () => {
     })).toEqual(["color.brand", "space.2", "color.shadow"]);
   });
 
+  it("does not treat a serialized composite object as an alias", () => {
+    expect(extractTokenReferences(
+      '{"fontFamily":"Inter, sans-serif","fontSize":"16px","fontWeight":"400"}',
+    )).toEqual([]);
+  });
+
   it("resolves incoming cross-collection references and unknown aliases", () => {
     const brand = token("core:brand", "color.brand", "#0066ff");
     const semantic = token("semantic:text", "color.text", "{color.brand}", {
@@ -52,7 +58,7 @@ describe("token dependencies", () => {
     });
   });
 
-  it("uses the active mode and unsaved drafts", () => {
+  it("keeps every mode visible and applies unsaved drafts", () => {
     const light = token("core:light", "color.light", "#fff");
     const dark = token("core:dark", "color.dark", "#000");
     const surface = token("semantic:surface", "color.surface", "{color.light}", {
@@ -63,7 +69,10 @@ describe("token dependencies", () => {
       },
     });
 
-    expect(getTokenDependencyGraph(surface, [light, dark, surface], {}, "Dark").outgoing[0]?.path).toBe("color.dark");
+    expect(getTokenDependencyGraph(surface, [light, dark, surface], {}, "Dark").outgoing).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "color.light", mode: "Light" }),
+      expect.objectContaining({ path: "color.dark", mode: "Dark" }),
+    ]));
     expect(getTokenDependencyGraph(surface, [light, dark, surface], {
       [surface.id]: {
         tokenId: surface.id,
@@ -74,6 +83,25 @@ describe("token dependencies", () => {
         rawValue: "color.light",
       },
     }, null).outgoing[0]?.path).toBe("color.light");
+  });
+
+  it("labels incoming references with the mode in which each link is defined", () => {
+    const light = token("core:light", "color.light", "#fff");
+    const dark = token("core:dark", "color.dark", "#000");
+    const surface = token("semantic:surface", "color.surface", "{color.light}", {
+      fileId: "semantic",
+      modes: {
+        Light: { kind: "alias", text: "{color.light}", aliasPath: "color.light" },
+        Dark: { kind: "alias", text: "{color.dark}", aliasPath: "color.dark" },
+      },
+    });
+
+    expect(getTokenDependencyGraph(dark, [light, dark, surface], {}, null).incoming).toMatchObject([
+      { path: "color.surface", mode: "Dark" },
+    ]);
+    expect(getTokenDependencyGraph(light, [light, dark, surface], {}, null).incoming).toMatchObject([
+      { path: "color.surface", mode: "Light" },
+    ]);
   });
 
   it("reports self references and cycles", () => {

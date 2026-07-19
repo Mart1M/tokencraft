@@ -6,7 +6,9 @@ import {
 import { resolveModeKey, type TokenDisplayValue } from "@/lib/tokens/display";
 import type { ImportedTokenRow } from "@/lib/tokens/entries";
 
-const REFERENCE_PATTERN = /\{([^{}]+)\}/g;
+// Keep this in sync with the display alias matcher: JSON composite values use
+// braces too, but only path-shaped values are token references.
+const REFERENCE_PATTERN = /\{([\w./-]+)\}/g;
 
 export type TokenDependency = {
   path: string;
@@ -97,11 +99,6 @@ function resolveReference(
   );
 }
 
-function resolvedMode(row: ImportedTokenRow, requestedMode: string | null) {
-  if (!requestedMode || requestedMode === "Default") return null;
-  return row.modes && resolveModeKey(row.modes, requestedMode) ? requestedMode : null;
-}
-
 function buildOutgoing(
   source: ImportedTokenRow,
   rows: ImportedTokenRow[],
@@ -112,9 +109,30 @@ function buildOutgoing(
     return {
       path,
       token,
-      mode: token ? resolvedMode(token, mode) : mode,
+      // The mode belongs to the token that contains the reference, not the
+      // referenced token. A reference authored in Dark must remain labelled
+      // Dark even if its target has no corresponding Dark override.
+      mode: mode ?? "Default",
       missing: !token,
     } satisfies TokenDependency;
+  });
+}
+
+function getReferenceModes(row: ImportedTokenRow) {
+  const modes = Object.keys(row.modes ?? {});
+  return modes.length ? modes : ["Default"];
+}
+
+function buildOutgoingAcrossModes(source: ImportedTokenRow, rows: ImportedTokenRow[]) {
+  const dependencies = getReferenceModes(source).flatMap((mode) =>
+    buildOutgoing(source, rows, mode === "Default" ? null : mode),
+  );
+  const seen = new Set<string>();
+  return dependencies.filter((dependency) => {
+    const key = `${dependency.path}:${dependency.token?.id ?? "missing"}:${dependency.mode}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
   });
 }
 
@@ -159,14 +177,14 @@ export function getTokenDependencyGraph(
 ): TokenDependencyGraph {
   const rows = getEffectiveDependencyRows(tokens, drafts);
   const effectiveToken = rows.find((row) => row.id === token.id) ?? token;
-  const outgoing = buildOutgoing(effectiveToken, rows, mode);
+  const outgoing = buildOutgoingAcrossModes(effectiveToken, rows);
   const incoming = rows.flatMap((candidate) =>
-    buildOutgoing(candidate, rows, mode)
+    buildOutgoingAcrossModes(candidate, rows)
       .filter((dependency) => dependency.token?.id === effectiveToken.id)
-      .map(() => ({
+      .map((dependency) => ({
         path: candidate.name,
         token: candidate,
-        mode: resolvedMode(candidate, mode),
+        mode: dependency.mode,
         missing: false,
       })),
   );

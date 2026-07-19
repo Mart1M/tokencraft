@@ -1,0 +1,18 @@
+{
+  "name": "@tokencraft/figma-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsup && node scripts/copy-static.mjs",
+    "dev": "tsup --watch",
+    "typecheck": "tsc -p tsconfig.code.json --noEmit && tsc -p tsconfig.ui.json --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.100.2",
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

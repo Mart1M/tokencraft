@@ -7,6 +7,8 @@ import { Command } from "commander";
 import open from "open";
 import pc from "picocolors";
 
+import { FIGMA_BRIDGE_PORT, startFigmaBridge } from "./figma-bridge.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 interface CliOptions {
@@ -92,8 +94,40 @@ async function runServer(path: string | undefined, opts: CliOptions): Promise<vo
   }
 
   const url = root ? `${baseUrl}/?openPath=${encodeURIComponent(root)}` : baseUrl;
+  const figmaBridge = startFigmaBridge(async (rootPath) => {
+    const response = await fetch(`${baseUrl}/api/workspaces/tokens?root=${encodeURIComponent(rootPath)}`);
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+
+    if (!response.ok) {
+      throw new Error(payload.error ?? `TokenCraft returned ${response.status}.`);
+    }
+
+    return payload;
+  }, async (rootPath, collection) => {
+    const response = await fetch(`${baseUrl}/api/workspaces/figma-export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rootPath, collection }),
+    });
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+
+    if (!response.ok) {
+      throw new Error(payload.error ?? `TokenCraft returned ${response.status}.`);
+    }
+
+    return payload;
+  });
+
+  try {
+    await figmaBridge.ready;
+  } catch (error) {
+    console.error(pc.red(`  Could not start the Figma bridge: ${error instanceof Error ? error.message : "Unknown error."}`));
+    child.kill();
+    process.exit(1);
+  }
 
   console.log(`  ${pc.green("➜")}  Dashboard: ${pc.cyan(url)}`);
+  console.log(pc.dim(`  Figma bridge: ws://localhost:${FIGMA_BRIDGE_PORT}`));
   console.log(pc.dim("\n  Press Ctrl+C to stop.\n"));
 
   if (opts.open) {
@@ -102,6 +136,7 @@ async function runServer(path: string | undefined, opts: CliOptions): Promise<vo
 
   const shutdown = () => {
     console.log(pc.dim("\n  Shutting down…"));
+    figmaBridge.close();
     child.kill();
     process.exit(0);
   };

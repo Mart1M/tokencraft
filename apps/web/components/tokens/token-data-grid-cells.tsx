@@ -30,6 +30,7 @@ import { Badge } from "@/components/ui/badge";
 import { DataGridCellWrapper } from "@/components/data-grid/data-grid-cell-wrapper";
 import type { DataGridCellProps } from "@/types/data-grid";
 import {
+  formatColorAlphaForDisplay,
   resolveDisplayColor,
   type TokenDisplayPart,
   type TokenDisplayValue,
@@ -88,6 +89,7 @@ function TokenDisplayPartView({ part }: { part: TokenDisplayPart }) {
   }
 
   if (part.kind === "color") {
+    const alpha = formatColorAlphaForDisplay(part.text);
     return (
       <span className="inline-flex items-center gap-1.5">
         <span
@@ -95,7 +97,7 @@ function TokenDisplayPartView({ part }: { part: TokenDisplayPart }) {
           style={{ backgroundColor: part.color }}
           aria-hidden
         />
-        <span className="font-mono text-[13px]">{part.text}</span>
+        <span className="font-mono text-[13px]">{alpha ? `${alpha.hex} · ${alpha.alphaPercent}%` : part.text}</span>
       </span>
     );
   }
@@ -105,6 +107,7 @@ function TokenDisplayPartView({ part }: { part: TokenDisplayPart }) {
 
 function TokenValuePreview({ value, resolvedColor }: { value: TokenDisplayValue; resolvedColor?: string }) {
   const previewColor = resolvedColor ?? resolveDisplayColor(value);
+  const alpha = value.kind === "color" ? formatColorAlphaForDisplay(value.text) : null;
 
   if (value.kind === "composite" && value.parts?.length) {
     return (
@@ -137,7 +140,7 @@ function TokenValuePreview({ value, resolvedColor }: { value: TokenDisplayValue;
           {value.aliasPath ?? value.text}
         </Badge>
       ) : (
-        <span className="truncate font-mono text-[13px]">{value.text}</span>
+        <span className="truncate font-mono text-[13px]">{alpha ? `${alpha.hex} · ${alpha.alphaPercent}%` : value.text}</span>
       )}
     </div>
   );

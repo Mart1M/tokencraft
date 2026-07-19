@@ -19,6 +19,7 @@ import {
   buildCreateDraft,
   buildDraftFromRow,
   buildPendingTokenId,
+  formatDraftValue,
   getDraftKey,
   getDraftsForToken,
   getEditableRawValue,
@@ -36,6 +37,8 @@ import {
   type TokenColorModifier,
 } from "@/lib/tokens/color-modifier";
 import { buildTokenDisplayValue } from "@/lib/tokens/display";
+import { formatDtcgTokenValue } from "@/lib/tokens/dtcg-format";
+import { toStoredTokenRawValue } from "@/lib/tokens/raw-value";
 import { resolveColorModifierPreview } from "@/lib/tokens/color-modifier-preview";
 import { getDefaultLiteralValueForType } from "@/lib/tokens/value-editor";
 import { getTokenGroupSegments } from "@/lib/tokens/token-tree";
@@ -147,8 +150,8 @@ function buildCreatedTokenRow(
   tokens: ImportedTokenRow[],
 ): ImportedTokenRow {
   const collection = tokens.find((candidate) => candidate.fileId === draft.fileId);
-  const rawValue =
-    draft.valueKind === "alias" ? `{${draft.rawValue}}` : draft.rawValue;
+  const formatted = formatDraftValue(draft);
+  const raw = toStoredTokenRawValue(formatted);
 
   return {
     id: draft.tokenId,
@@ -157,8 +160,9 @@ function buildCreatedTokenRow(
     collectionName: collection?.collectionName ?? "Collection",
     name: draft.path,
     ...(draft.type ? { type: draft.type } : {}),
-    value: rawValue,
-    display: buildTokenDisplayValue(rawValue, draft.type),
+    value: formatDtcgTokenValue(formatted, draft.type),
+    display: buildTokenDisplayValue(formatted, draft.type),
+    ...(raw !== undefined ? { raw } : {}),
     ...(draft.description ? { description: draft.description } : {}),
     ...(draft.extensions ? { extensions: draft.extensions } : {}),
     ...(draft.colorModifier ? { colorModifier: draft.colorModifier } : {}),
