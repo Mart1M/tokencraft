@@ -75,16 +75,25 @@ export function extractDtcgTokenMetadata(record: Record<string, unknown>) {
   const description =
     typeof record.$description === "string" ? record.$description : undefined;
   const rawExtensions = record.$extensions;
-  const modifier =
-    rawExtensions && typeof rawExtensions === "object" && !Array.isArray(rawExtensions)
-      ? parseTokenColorModifier(
-          (rawExtensions as Record<string, unknown>).tokencraft &&
-            typeof (rawExtensions as Record<string, unknown>).tokencraft === "object"
-            ? ((rawExtensions as Record<string, unknown>).tokencraft as Record<string, unknown>).modify
-            : undefined,
-        )
-      : undefined;
-  const extensions = parseDtcgExtensions(withoutTokencraftModifier(rawExtensions));
+  let modifier: ReturnType<typeof parseTokenColorModifier>;
+  if (rawExtensions && typeof rawExtensions === "object" && !Array.isArray(rawExtensions)) {
+    const ext = rawExtensions as Record<string, unknown>;
+    // Native Tokencraft format takes priority
+    if (ext.tokencraft && typeof ext.tokencraft === "object" && !Array.isArray(ext.tokencraft)) {
+      modifier = parseTokenColorModifier((ext.tokencraft as Record<string, unknown>).modify);
+    }
+    // Fall back to studio.tokens vendor extension
+    if (!modifier) {
+      const studioTokens = ext["studio.tokens"];
+      if (studioTokens && typeof studioTokens === "object" && !Array.isArray(studioTokens)) {
+        const parsed = parseTokenColorModifier((studioTokens as Record<string, unknown>).modify);
+        if (parsed) {
+          modifier = { ...parsed, format: "studio.tokens" };
+        }
+      }
+    }
+  }
+  const extensions = parseDtcgExtensions(withoutKnownModifiers(rawExtensions));
 
   return {
     ...(description ? { description } : {}),
@@ -93,22 +102,34 @@ export function extractDtcgTokenMetadata(record: Record<string, unknown>) {
   };
 }
 
-function withoutTokencraftModifier(value: unknown): unknown {
+function withoutKnownModifiers(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return value;
   }
 
   const extensions = { ...(value as Record<string, unknown>) };
-  const tokencraft = extensions.tokencraft;
 
+  // Strip tokencraft.modify (native format)
+  const tokencraft = extensions.tokencraft;
   if (tokencraft && typeof tokencraft === "object" && !Array.isArray(tokencraft)) {
     const remaining = { ...(tokencraft as Record<string, unknown>) };
     delete remaining.modify;
-
     if (Object.keys(remaining).length > 0) {
       extensions.tokencraft = remaining;
     } else {
       delete extensions.tokencraft;
+    }
+  }
+
+  // Strip studio.tokens.modify (Tokens Studio vendor extension)
+  const studioTokens = extensions["studio.tokens"];
+  if (studioTokens && typeof studioTokens === "object" && !Array.isArray(studioTokens)) {
+    const remaining = { ...(studioTokens as Record<string, unknown>) };
+    delete remaining.modify;
+    if (Object.keys(remaining).length > 0) {
+      extensions["studio.tokens"] = remaining;
+    } else {
+      delete extensions["studio.tokens"];
     }
   }
 

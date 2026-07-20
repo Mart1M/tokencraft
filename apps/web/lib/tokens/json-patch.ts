@@ -277,8 +277,10 @@ export function applyTokenMetadataToLeaf(
   const extensions = { ...(metadata.extensions ?? {}) } as Record<string, unknown>;
 
   if (metadata.colorModifier) {
-    extensions.tokencraft = {
-      modify: metadata.colorModifier,
+    const { format, ...modifierData } = metadata.colorModifier;
+    const vendorKey = format === "studio.tokens" ? "studio.tokens" : "tokencraft";
+    extensions[vendorKey] = {
+      modify: modifierData,
     };
   }
 

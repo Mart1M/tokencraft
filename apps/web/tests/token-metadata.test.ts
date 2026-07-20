@@ -121,6 +121,58 @@ describe("token metadata", () => {
     });
   });
 
+  it("extracts the studio.tokens color modifier without flattening it", () => {
+    const entries = flattenTokenEntries({
+      color: {
+        overlay: {
+          $type: "color",
+          $value: "{color.base}",
+          $extensions: {
+            "studio.tokens": {
+              modify: {
+                color: "{vp.semantic.color.container.neutral}",
+                space: "srgb",
+                type: "mix",
+                value: "0.2",
+              },
+            },
+            "com.figma": { styleId: "S:123" },
+          },
+        },
+      },
+    });
+
+    expect(entries[0]?.colorModifier).toEqual({
+      color: "{vp.semantic.color.container.neutral}",
+      space: "srgb",
+      type: "mix",
+      value: "0.2",
+      format: "studio.tokens",
+    });
+    expect(entries[0]?.extensions).toEqual({ "com.figma.styleId": "S:123" });
+
+    // Round-trip: writes back under "studio.tokens" and strips the internal format marker
+    expect(buildJsonFromMetadata({ topLevelKeys: ["color"], tokens: entries })).toEqual({
+      color: {
+        overlay: {
+          $type: "color",
+          $value: "{color.base}",
+          $extensions: {
+            "com.figma.styleId": "S:123",
+            "studio.tokens": {
+              modify: {
+                color: "{vp.semantic.color.container.neutral}",
+                space: "srgb",
+                type: "mix",
+                value: "0.2",
+              },
+            },
+          },
+        },
+      },
+    });
+  });
+
   it("removes a modifier explicitly from a draft", () => {
     const next = mergeTokenMetadata(
       {

@@ -60,7 +60,7 @@ export function TokenColorModifierEditor({
         <div>
           <p className="text-sm font-medium">Modify color</p>
           <p className="text-xs text-muted-foreground">
-            Saved in <code className="rounded bg-muted px-1 py-0.5">$extensions.tokencraft.modify</code>.
+            Saved in <code className="rounded bg-muted px-1 py-0.5">{value.format === "studio.tokens" ? "$extensions[\"studio.tokens\"].modify" : "$extensions.tokencraft.modify"}</code>.
           </p>
         </div>
         <Button type="button" variant="ghost" size="icon-sm" onClick={() => onChange(undefined)} aria-label="Remove color modifier">
