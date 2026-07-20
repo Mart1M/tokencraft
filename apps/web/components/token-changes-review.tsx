@@ -42,7 +42,7 @@ function metadataLines(draft: TokenDraft) {
   return [
     ...(draft.description !== undefined ? [`$description: ${JSON.stringify(draft.description)}`] : []),
     ...(draft.extensions !== undefined ? [`$extensions: ${JSON.stringify(draft.extensions)}`] : []),
-    ...(draft.colorModifier !== undefined ? [`$extensions.tokencraft.modify: ${JSON.stringify(draft.colorModifier)}`] : []),
+    ...(draft.colorModifier !== undefined ? [`$extensions.${draft.colorModifier.format === "studio.tokens" ? '["studio.tokens"]' : "tokencraft"}.modify: ${JSON.stringify(draft.colorModifier)}`] : []),
   ];
 }
 
