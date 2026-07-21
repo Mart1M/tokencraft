@@ -457,6 +457,23 @@ function validateCollectionPath(relativePath: string) {
   return normalized;
 }
 
+function validateFolderPath(relativePath: string) {
+  const normalized = relativePath
+    .trim()
+    .replace(/\\/g, "/")
+    .replace(/^\/+|\/+$/g, "");
+
+  if (!normalized) {
+    throw new WorkspaceFsError("Folder path is required.");
+  }
+
+  if (normalized.split("/").some((segment) => !segment || segment === "." || segment === "..")) {
+    throw new WorkspaceFsError("Folder path is invalid.");
+  }
+
+  return normalized;
+}
+
 // `scanWorkspaceFiles` only returns files listed in tokencraft.config.json
 // once one exists, and the auto-discovery heuristics (native glob aside)
 // ignore JSON files with zero tokens — a brand new, still-empty collection
@@ -507,6 +524,22 @@ async function registerFileInWorkspaceConfig(
   );
 }
 
+async function registerFolderInWorkspaceConfig(rootPath: string, relativePath: string) {
+  const config =
+    (await readWorkspaceConfig(rootPath)) ??
+    (await discoverWorkspaceConfig(rootPath)) ?? {
+      version: 1,
+      files: [],
+    };
+  const folders = [...new Set([...(config.folders ?? []), relativePath])];
+
+  await writeFileAtomic(
+    path.join(rootPath, TOKENCRAFT_CONFIG_FILENAME),
+    buildTokencraftConfigContent({ ...config, folders }),
+    "utf8",
+  );
+}
+
 async function unregisterFileInWorkspaceConfig(rootPath: string, relativePath: string) {
   const config = await readWorkspaceConfig(rootPath);
   if (!config?.files.includes(relativePath)) return;
@@ -551,6 +584,107 @@ export async function createTokenFile(
   await registerFileInWorkspaceConfig(rootPath, normalized, collectionName);
 
   return inspectTokenJson(normalized, "{}");
+}
+
+export async function createWorkspaceFolder(rootPath: string, relativePath: string) {
+  const normalized = validateFolderPath(relativePath);
+  const absolutePath = toAbsolutePath(rootPath, normalized);
+
+  try {
+    const stats = await fs.stat(absolutePath);
+    if (stats.isDirectory()) {
+      throw new WorkspaceFsError("A folder already exists at this path.", 409);
+    }
+    throw new WorkspaceFsError("A file already exists at this path.", 409);
+  } catch (error) {
+    if (error instanceof WorkspaceFsError) {
+      throw error;
+    }
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  await fs.mkdir(absolutePath, { recursive: true });
+  await registerFolderInWorkspaceConfig(rootPath, normalized);
+}
+
+export async function getWorkspaceFolderPaths(rootPath: string) {
+  const config = await readWorkspaceConfig(rootPath);
+  const folders: string[] = [];
+
+  for (const relativePath of config?.folders ?? []) {
+    try {
+      const stats = await fs.stat(toAbsolutePath(rootPath, relativePath));
+      if (stats.isDirectory()) {
+        folders.push(relativePath);
+      }
+    } catch {
+      // Ignore folders removed outside TokenCraft.
+    }
+  }
+
+  return folders;
+}
+
+function replacePathPrefix(value: string, oldPath: string, newPath: string) {
+  return value === oldPath || value.startsWith(`${oldPath}/`)
+    ? `${newPath}${value.slice(oldPath.length)}`
+    : value;
+}
+
+async function assertRenameDestination(sourcePath: string, destinationPath: string) {
+  try {
+    await fs.access(destinationPath);
+    throw new WorkspaceFsError("A file or folder already exists at the new path.", 409);
+  } catch (error) {
+    if (error instanceof WorkspaceFsError) throw error;
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  await fs.access(sourcePath);
+}
+
+export async function renameWorkspaceFolder(rootPath: string, oldPath: string, newPath: string) {
+  const oldRelativePath = validateFolderPath(oldPath);
+  const newRelativePath = validateFolderPath(newPath);
+  const sourcePath = toAbsolutePath(rootPath, oldRelativePath);
+  const destinationPath = toAbsolutePath(rootPath, newRelativePath);
+  await assertRenameDestination(sourcePath, destinationPath);
+  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+  await fs.rename(sourcePath, destinationPath);
+
+  const config = await readWorkspaceConfig(rootPath);
+  if (!config) return;
+  const fileCollections = config.fileCollections
+    ? Object.fromEntries(Object.entries(config.fileCollections).map(([filePath, collection]) => [replacePathPrefix(filePath, oldRelativePath, newRelativePath), collection]))
+    : undefined;
+  await writeFileAtomic(path.join(rootPath, TOKENCRAFT_CONFIG_FILENAME), buildTokencraftConfigContent({
+    ...config,
+    files: config.files.map((filePath) => replacePathPrefix(filePath, oldRelativePath, newRelativePath)),
+    folders: config.folders?.map((folderPath) => replacePathPrefix(folderPath, oldRelativePath, newRelativePath)),
+    ...(fileCollections ? { fileCollections } : {}),
+  }), "utf8");
+}
+
+export async function renameWorkspaceTokenFile(rootPath: string, oldPath: string, newPath: string) {
+  const oldRelativePath = validateCollectionPath(oldPath);
+  const newRelativePath = validateCollectionPath(newPath);
+  const sourcePath = toAbsolutePath(rootPath, oldRelativePath);
+  const destinationPath = toAbsolutePath(rootPath, newRelativePath);
+  await assertRenameDestination(sourcePath, destinationPath);
+  await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+  await fs.rename(sourcePath, destinationPath);
+
+  const config = await readWorkspaceConfig(rootPath);
+  if (!config) return;
+  const fileCollections = config.fileCollections
+    ? Object.fromEntries(Object.entries(config.fileCollections).map(([filePath, collection]) => [filePath === oldRelativePath ? newRelativePath : filePath, collection]))
+    : undefined;
+  await writeFileAtomic(path.join(rootPath, TOKENCRAFT_CONFIG_FILENAME), buildTokencraftConfigContent({
+    ...config,
+    files: config.files.map((filePath) => filePath === oldRelativePath ? newRelativePath : filePath),
+    ...(fileCollections ? { fileCollections } : {}),
+  }), "utf8");
 }
 
 export type FigmaCollectionExportInput = {

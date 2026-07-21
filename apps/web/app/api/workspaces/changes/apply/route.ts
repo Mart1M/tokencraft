@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { assertDirectory, WorkspaceFsError, writeWorkspaceTokenDrafts } from "@/lib/tokens/fs";
+import { assertDirectory, createWorkspaceFolder, renameWorkspaceFolder, renameWorkspaceTokenFile, WorkspaceFsError, writeWorkspaceTokenDrafts } from "@/lib/tokens/fs";
 import { sanitizeFolderPathInput } from "@/lib/tokens/path-input";
 import { CollectionOperationError, createWorkspaceCollection } from "@/lib/workspaces/collection-operations";
 import {
@@ -39,6 +39,11 @@ const requestSchema = z.object({
     path: z.string().trim().min(1),
     collectionName: z.string().trim().optional(),
   })).default([]),
+  folderCreates: z.array(z.object({
+    path: z.string().trim().min(1),
+  })).default([]),
+  collectionRenames: z.array(z.object({ oldPath: z.string().trim().min(1), newPath: z.string().trim().min(1) })).default([]),
+  folderRenames: z.array(z.object({ oldPath: z.string().trim().min(1), newPath: z.string().trim().min(1) })).default([]),
   modeChanges: z.array(z.discriminatedUnion("action", [
     z.object({
       fileId: z.string().min(1), action: z.literal("add"), mode: z.string().min(1), modes: z.array(z.string().min(1)).min(1),
@@ -59,16 +64,12 @@ export async function POST(request: Request) {
   }
 
   const input = parsed.data;
-  if (!input.drafts.length && !input.pendingCollectionDeletes.length && !input.collectionCreates.length && !input.modeChanges.length) {
+  if (!input.drafts.length && !input.pendingCollectionDeletes.length && !input.collectionCreates.length && !input.folderCreates.length && !input.collectionRenames.length && !input.folderRenames.length && !input.modeChanges.length) {
     return NextResponse.json({ error: "No changes to save." }, { status: 400 });
   }
 
   try {
     await assertDirectory(input.rootPath);
-
-    for (const change of input.collectionCreates) {
-      await createWorkspaceCollection(input.rootPath, change);
-    }
 
     for (const change of input.modeChanges) {
       if (change.action === "add") {
@@ -87,6 +88,19 @@ export async function POST(request: Request) {
         pendingCollectionDeletes: input.pendingCollectionDeletes,
       });
       savedFileCount += result.savedFileCount;
+    }
+
+    for (const change of input.folderRenames) {
+      await renameWorkspaceFolder(input.rootPath, change.oldPath, change.newPath);
+    }
+    for (const change of input.collectionRenames) {
+      await renameWorkspaceTokenFile(input.rootPath, change.oldPath, change.newPath);
+    }
+    for (const change of input.collectionCreates) {
+      await createWorkspaceCollection(input.rootPath, change);
+    }
+    for (const change of input.folderCreates) {
+      await createWorkspaceFolder(input.rootPath, change.path);
     }
 
     return NextResponse.json({ ok: true, savedFileCount });

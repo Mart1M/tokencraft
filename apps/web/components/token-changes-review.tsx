@@ -1,6 +1,6 @@
 "use client";
 
-import { FileDiff, Trash2, X } from "lucide-react";
+import { FileDiff, FolderPlus, Pencil, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -42,7 +42,7 @@ function metadataLines(draft: TokenDraft) {
   return [
     ...(draft.description !== undefined ? [`$description: ${JSON.stringify(draft.description)}`] : []),
     ...(draft.extensions !== undefined ? [`$extensions: ${JSON.stringify(draft.extensions)}`] : []),
-    ...(draft.colorModifier !== undefined ? [`$extensions.${draft.colorModifier.format === "studio.tokens" ? '["studio.tokens"]' : "tokencraft"}.modify: ${JSON.stringify(draft.colorModifier)}`] : []),
+    ...(draft.colorModifier ? [`$extensions.${draft.colorModifier.format === "studio.tokens" ? '["studio.tokens"]' : "tokencraft"}.modify: ${JSON.stringify(draft.colorModifier)}`] : []),
   ];
 }
 
@@ -91,9 +91,12 @@ export function getWorkspaceChangeCount(state: {
   drafts: Record<string, TokenDraft>;
   pendingCollectionDeletes: string[];
   pendingCollectionCreates: Record<string, unknown>;
+  pendingFolderCreates: Record<string, unknown>;
+  pendingCollectionRenames: Record<string, unknown>;
+  pendingFolderRenames: Record<string, unknown>;
   pendingModeChanges: Record<string, unknown>;
 }) {
-  return Object.keys(state.drafts).length + state.pendingCollectionDeletes.length + Object.keys(state.pendingCollectionCreates).length + Object.keys(state.pendingModeChanges).length;
+  return Object.keys(state.drafts).length + state.pendingCollectionDeletes.length + Object.keys(state.pendingCollectionCreates).length + Object.keys(state.pendingFolderCreates).length + Object.keys(state.pendingCollectionRenames).length + Object.keys(state.pendingFolderRenames).length + Object.keys(state.pendingModeChanges).length;
 }
 
 export function TokenChangesReview({
@@ -116,16 +119,22 @@ export function TokenChangesReview({
   const drafts = useTokenDraftStore((state) => state.drafts);
   const pendingCollectionDeletes = useTokenDraftStore((state) => state.pendingCollectionDeletes);
   const pendingCollectionCreates = useTokenDraftStore((state) => state.pendingCollectionCreates);
+  const pendingFolderCreates = useTokenDraftStore((state) => state.pendingFolderCreates);
+  const pendingCollectionRenames = useTokenDraftStore((state) => state.pendingCollectionRenames);
+  const pendingFolderRenames = useTokenDraftStore((state) => state.pendingFolderRenames);
   const pendingModeChanges = useTokenDraftStore((state) => state.pendingModeChanges);
   const clearDraftByKey = useTokenDraftStore((state) => state.clearDraftByKey);
   const unmarkCollectionForDelete = useTokenDraftStore((state) => state.unmarkCollectionForDelete);
   const clearCollectionCreate = useTokenDraftStore((state) => state.clearCollectionCreate);
+  const clearFolderCreate = useTokenDraftStore((state) => state.clearFolderCreate);
+  const clearCollectionRename = useTokenDraftStore((state) => state.clearCollectionRename);
+  const clearFolderRename = useTokenDraftStore((state) => state.clearFolderRename);
   const clearModeChange = useTokenDraftStore((state) => state.clearModeChange);
   const clearAllDrafts = useTokenDraftStore((state) => state.clearAllDrafts);
 
   const collectionName = (id: string) => collections.find((collection) => collection.id === id)?.name ?? "Unknown collection";
   const draftEntries = Object.entries(drafts);
-  const changeCount = getWorkspaceChangeCount({ drafts, pendingCollectionDeletes, pendingCollectionCreates, pendingModeChanges });
+  const changeCount = getWorkspaceChangeCount({ drafts, pendingCollectionDeletes, pendingCollectionCreates, pendingFolderCreates, pendingCollectionRenames, pendingFolderRenames, pendingModeChanges });
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -155,6 +164,17 @@ export function TokenChangesReview({
 
           {Object.values(pendingCollectionCreates).map((change) => (
             <CompactChange key={change.id} onDiscard={() => clearCollectionCreate(change.id)}><span className="text-emerald-600">+ </span>collection {change.path}</CompactChange>
+          ))}
+          {Object.values(pendingFolderCreates).map((change) => (
+            <CompactChange key={change.id} onDiscard={() => clearFolderCreate(change.id)}>
+              <FolderPlus className="size-3.5 text-emerald-600" /> folder {change.path}
+            </CompactChange>
+          ))}
+          {Object.values(pendingFolderRenames).map((change) => (
+            <CompactChange key={change.id} onDiscard={() => clearFolderRename(change.id)}><Pencil className="size-3.5" /> folder {change.oldPath} → {change.newPath}</CompactChange>
+          ))}
+          {Object.values(pendingCollectionRenames).map((change) => (
+            <CompactChange key={change.id} onDiscard={() => clearCollectionRename(change.id)}><Pencil className="size-3.5" /> collection {change.oldPath} → {change.newPath}</CompactChange>
           ))}
           {pendingCollectionDeletes.map((id) => (
             <CompactChange key={id} onDiscard={() => unmarkCollectionForDelete(id)}><span className="text-red-600">− </span>collection {collectionName(id)}</CompactChange>

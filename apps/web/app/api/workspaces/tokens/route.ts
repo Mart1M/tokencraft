@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { collectTokenModes } from "@/lib/tokens/display";
 import { getImportedTokenRows, getTokenSidebarCollections } from "@/lib/tokens/entries";
-import { assertDirectory, readWorkspaceTokenFiles, WorkspaceFsError } from "@/lib/tokens/fs";
+import { assertDirectory, getWorkspaceFolderPaths, readWorkspaceTokenFiles, WorkspaceFsError } from "@/lib/tokens/fs";
 import { sanitizeFolderPathInput } from "@/lib/tokens/path-input";
 
 const FIGMA_ORIGIN = "https://www.figma.com";
@@ -43,7 +43,10 @@ export async function GET(request: Request) {
 
   try {
     await assertDirectory(rootPath);
-    const files = await readWorkspaceTokenFiles(rootPath);
+    const [files, folders] = await Promise.all([
+      readWorkspaceTokenFiles(rootPath),
+      getWorkspaceFolderPaths(rootPath),
+    ]);
     const tokens = getImportedTokenRows(files);
     const collections = getTokenSidebarCollections(files);
     const modes = collectTokenModes(tokens);
@@ -52,6 +55,7 @@ export async function GET(request: Request) {
       rootPath,
       tokens,
       collections,
+      folders,
       modes,
       tokenFileCount: files.length,
     }, { headers: getCorsHeaders(request) });

@@ -17,6 +17,7 @@ import { getWorkspace, setLastOpenedWorkspaceId } from "@/lib/workspaces/local-s
 type WorkspaceTokenData = {
   tokens: ImportedTokenRow[];
   collections: TokenSidebarCollection[];
+  folders: string[];
   modes: string[];
   tokenFileCount: number;
 };

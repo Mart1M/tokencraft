@@ -16,6 +16,9 @@ export function useTokenAutoSave() {
   );
   const reset = useTokenDraftStore((state) => state.reset);
   const pendingCollectionCreates = useTokenDraftStore((state) => state.pendingCollectionCreates);
+  const pendingFolderCreates = useTokenDraftStore((state) => state.pendingFolderCreates);
+  const pendingCollectionRenames = useTokenDraftStore((state) => state.pendingCollectionRenames);
+  const pendingFolderRenames = useTokenDraftStore((state) => state.pendingFolderRenames);
   const pendingModeChanges = useTokenDraftStore((state) => state.pendingModeChanges);
 
   const [status, setStatus] = useState<TokenAutoSaveStatus>("idle");
@@ -24,6 +27,9 @@ export function useTokenAutoSave() {
     Object.keys(drafts).length > 0 ||
     pendingCollectionDeletes.length > 0 ||
     Object.keys(pendingCollectionCreates).length > 0 ||
+    Object.keys(pendingFolderCreates).length > 0 ||
+    Object.keys(pendingCollectionRenames).length > 0 ||
+    Object.keys(pendingFolderRenames).length > 0 ||
     Object.keys(pendingModeChanges).length > 0;
 
   useEffect(() => {
@@ -49,6 +55,9 @@ export function useTokenAutoSave() {
           drafts: Object.values(current.drafts),
           pendingCollectionDeletes: current.pendingCollectionDeletes,
           collectionCreates: Object.values(current.pendingCollectionCreates),
+          folderCreates: Object.values(current.pendingFolderCreates),
+          collectionRenames: Object.values(current.pendingCollectionRenames),
+          folderRenames: Object.values(current.pendingFolderRenames),
           modeChanges: Object.values(current.pendingModeChanges),
         }),
       });

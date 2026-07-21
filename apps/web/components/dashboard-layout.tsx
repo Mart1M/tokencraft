@@ -11,12 +11,14 @@ export function DashboardLayout({
   children,
   showTokensSidebar = false,
   tokenSidebarCollections = [],
+  tokenSidebarFolders = [],
   tokenExplorerModes = [],
   tokens = [],
 }: {
   children: React.ReactNode;
   showTokensSidebar?: boolean;
   tokenSidebarCollections?: TokenSidebarCollection[];
+  tokenSidebarFolders?: string[];
   tokenExplorerModes?: string[];
   tokens?: ImportedTokenRow[];
 }) {
@@ -28,7 +30,11 @@ export function DashboardLayout({
           showTokensSidebar ? "h-screen overflow-hidden" : "min-h-screen"
         )}
       >
-        <MainSidebar showCollections={showTokensSidebar} collections={tokenSidebarCollections} />
+        <MainSidebar
+          showCollections={showTokensSidebar}
+          collections={tokenSidebarCollections}
+          folders={tokenSidebarFolders}
+        />
         {showTokensSidebar ? <TokenGroupSidebar tokens={tokens} /> : null}
         <main
           className={cn(

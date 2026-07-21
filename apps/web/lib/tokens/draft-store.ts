@@ -13,6 +13,13 @@ export type PendingCollectionCreate = {
   collectionName?: string;
 };
 
+export type PendingFolderCreate = {
+  id: string;
+  path: string;
+};
+
+export type PendingPathRename = { id: string; oldPath: string; newPath: string };
+
 export type PendingModeChange = {
   id: string;
   fileId: string;
@@ -33,6 +40,9 @@ type TokenDraftStore = {
   drafts: Record<string, TokenDraft>;
   pendingCollectionDeletes: string[];
   pendingCollectionCreates: Record<string, PendingCollectionCreate>;
+  pendingFolderCreates: Record<string, PendingFolderCreate>;
+  pendingCollectionRenames: Record<string, PendingPathRename>;
+  pendingFolderRenames: Record<string, PendingPathRename>;
   pendingModeChanges: Record<string, PendingModeChange>;
   openToken: (tokenId: string) => void;
   openTokenForMode: (tokenId: string, mode: string) => void;
@@ -52,6 +62,12 @@ type TokenDraftStore = {
   unmarkCollectionForDelete: (fileId: string) => void;
   stageCollectionCreate: (change: Omit<PendingCollectionCreate, "id">) => void;
   clearCollectionCreate: (id: string) => void;
+  stageFolderCreate: (path: string) => void;
+  clearFolderCreate: (id: string) => void;
+  stageCollectionRename: (oldPath: string, newPath: string) => void;
+  stageFolderRename: (oldPath: string, newPath: string) => void;
+  clearCollectionRename: (id: string) => void;
+  clearFolderRename: (id: string) => void;
   stageModeChange: (change: Omit<PendingModeChange, "id">) => void;
   clearModeChange: (id: string) => void;
   reset: () => void;
@@ -68,6 +84,9 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
   drafts: {},
   pendingCollectionDeletes: [],
   pendingCollectionCreates: {},
+  pendingFolderCreates: {},
+  pendingCollectionRenames: {},
+  pendingFolderRenames: {},
   pendingModeChanges: {},
   openToken: (tokenId) =>
     set({
@@ -165,6 +184,9 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
         drafts: {},
         pendingCollectionDeletes: [],
         pendingCollectionCreates: {},
+        pendingFolderCreates: {},
+        pendingCollectionRenames: {},
+        pendingFolderRenames: {},
         pendingModeChanges: {},
         ...(discardedSelectedCreatedToken
           ? { selectedTokenId: null, isPanelOpen: false }
@@ -233,6 +255,39 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
       delete pendingCollectionCreates[id];
       return { pendingCollectionCreates };
     }),
+  stageFolderCreate: (path) => {
+    const id = `folder:${path}`;
+    set((state) => ({
+      pendingFolderCreates: {
+        ...state.pendingFolderCreates,
+        [id]: { id, path },
+      },
+    }));
+  },
+  clearFolderCreate: (id) =>
+    set((state) => {
+      const pendingFolderCreates = { ...state.pendingFolderCreates };
+      delete pendingFolderCreates[id];
+      return { pendingFolderCreates };
+    }),
+  stageCollectionRename: (oldPath, newPath) => set((state) => {
+    const id = `rename:collection:${oldPath}`;
+    return { pendingCollectionRenames: { ...state.pendingCollectionRenames, [id]: { id, oldPath, newPath } } };
+  }),
+  stageFolderRename: (oldPath, newPath) => set((state) => {
+    const id = `rename:folder:${oldPath}`;
+    return { pendingFolderRenames: { ...state.pendingFolderRenames, [id]: { id, oldPath, newPath } } };
+  }),
+  clearCollectionRename: (id) => set((state) => {
+    const pendingCollectionRenames = { ...state.pendingCollectionRenames };
+    delete pendingCollectionRenames[id];
+    return { pendingCollectionRenames };
+  }),
+  clearFolderRename: (id) => set((state) => {
+    const pendingFolderRenames = { ...state.pendingFolderRenames };
+    delete pendingFolderRenames[id];
+    return { pendingFolderRenames };
+  }),
   stageModeChange: (change) => {
     const id = `${change.fileId}:${change.action}:${change.oldMode ?? change.mode ?? change.newMode}`;
     set((state) => ({
@@ -253,6 +308,9 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
       drafts: {},
       pendingCollectionDeletes: [],
       pendingCollectionCreates: {},
+      pendingFolderCreates: {},
+      pendingCollectionRenames: {},
+      pendingFolderRenames: {},
       pendingModeChanges: {},
       selectedTokenId: null,
       isPanelOpen: false,
@@ -266,6 +324,9 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
     return (
       Object.keys(state.drafts).length > 0 || state.pendingCollectionDeletes.length > 0
       || Object.keys(state.pendingCollectionCreates).length > 0
+      || Object.keys(state.pendingFolderCreates).length > 0
+      || Object.keys(state.pendingCollectionRenames).length > 0
+      || Object.keys(state.pendingFolderRenames).length > 0
       || Object.keys(state.pendingModeChanges).length > 0
     );
   },

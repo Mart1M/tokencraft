@@ -55,6 +55,9 @@ export function TokenExplorerWorkspace({
   );
   const drafts = useTokenDraftStore((state) => state.drafts);
   const pendingCollectionCreates = useTokenDraftStore((state) => state.pendingCollectionCreates);
+  const pendingFolderCreates = useTokenDraftStore((state) => state.pendingFolderCreates);
+  const pendingCollectionRenames = useTokenDraftStore((state) => state.pendingCollectionRenames);
+  const pendingFolderRenames = useTokenDraftStore((state) => state.pendingFolderRenames);
   const pendingModeChanges = useTokenDraftStore((state) => state.pendingModeChanges);
   const [reviewOpen, setReviewOpen] = useState(false);
   const { selectedCollectionId, selectedGroupSegments } = useTokenExplorer();
@@ -103,6 +106,9 @@ export function TokenExplorerWorkspace({
     drafts,
     pendingCollectionDeletes,
     pendingCollectionCreates,
+    pendingFolderCreates,
+    pendingCollectionRenames,
+    pendingFolderRenames,
     pendingModeChanges,
   });
 

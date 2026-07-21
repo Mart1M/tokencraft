@@ -16,9 +16,11 @@ import type { TokenSidebarCollection } from "@/lib/tokens/entries";
 export function MainSidebar({
   showCollections = false,
   collections = [],
+  folders = [],
 }: {
   showCollections?: boolean;
   collections?: TokenSidebarCollection[];
+  folders?: string[];
 }) {
   const pathname = usePathname();
   const [sidebarWidth, setSidebarWidth] = useState(256);
@@ -85,7 +87,7 @@ export function MainSidebar({
         style={{ paddingLeft: 12, paddingRight: 12 }}
       >
         {showCollections ? (
-          <SidebarCollections collections={collections} />
+          <SidebarCollections collections={collections} folders={folders} />
         ) : null}
       </div>
 

@@ -30,6 +30,7 @@ function TokenExplorerPageContent() {
 
   const tokens = data?.tokens ?? [];
   const collections = data?.collections ?? [];
+  const folders = data?.folders ?? [];
   const modes = data?.modes ?? [];
   const settingsHref = workspaceSettingsPath(workspace.slug);
 
@@ -37,6 +38,7 @@ function TokenExplorerPageContent() {
     <DashboardLayout
       showTokensSidebar
       tokenSidebarCollections={collections}
+      tokenSidebarFolders={folders}
       tokenExplorerModes={modes}
       tokens={tokens}
     >

@@ -17,6 +17,22 @@ describe("parseTokencraftConfig", () => {
     });
   });
 
+  it("preserves explicitly created empty folders", () => {
+    const config = parseTokencraftConfig(
+      JSON.stringify({
+        version: 1,
+        files: [],
+        folders: ["tokens", "tokens/semantic"],
+      })
+    );
+
+    expect(config).toEqual({
+      version: 1,
+      files: [],
+      folders: ["tokens", "tokens/semantic"],
+    });
+  });
+
   it("parses the legacy sources format", () => {
     const config = parseTokencraftConfig(
       JSON.stringify({
@@ -115,6 +131,28 @@ describe("buildTokencraftConfigContent", () => {
               modes: ["Light", "Dark"],
             },
           ],
+        },
+        null,
+        2
+      )}\n`
+    );
+  });
+
+  it("writes explicit folders alongside collections", async () => {
+    const { buildTokencraftConfigContent } = await import("@/lib/tokencraft/config");
+
+    expect(
+      buildTokencraftConfigContent({
+        version: 1,
+        files: ["tokens/base.json"],
+        folders: ["tokens", "tokens/semantic"],
+      })
+    ).toBe(
+      `${JSON.stringify(
+        {
+          version: 1,
+          files: ["tokens/base.json"],
+          folders: ["tokens", "tokens/semantic"],
         },
         null,
         2
