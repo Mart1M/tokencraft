@@ -9,7 +9,26 @@ import { createWorkspace } from "@/lib/workspaces/local-store";
 import { sanitizeFolderPathInput } from "@/lib/tokens/path-input";
 import { cn } from "@/lib/utils";
 
-import type { LocalWorkspace } from "@tokencraft/core";
+import type { LocalWorkspace, ModeStorage } from "@tokencraft/core";
+
+const MODE_STORAGE_OPTIONS: Array<{
+  value: ModeStorage;
+  title: string;
+  description: string;
+}> = [
+  {
+    value: "value-map",
+    title: "Same file ($value map)",
+    description:
+      "Modes live in one JSON file as keys under $value / value (e.g. light and dark side by side).",
+  },
+  {
+    value: "separate-files",
+    title: "Separate files",
+    description:
+      "Each mode is its own token file. A collection lists one file per mode in tokencraft.config.json.",
+  },
+];
 
 export function CreateWorkspaceDialog({
   open,
@@ -23,6 +42,7 @@ export function CreateWorkspaceDialog({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [name, setName] = useState("");
   const [rootPath, setRootPath] = useState("");
+  const [modeStorage, setModeStorage] = useState<ModeStorage>("value-map");
   const [error, setError] = useState<string | null>(null);
   const [isBrowsing, setIsBrowsing] = useState(false);
   const [isPending, setIsPending] = useState(false);
@@ -47,6 +67,7 @@ export function CreateWorkspaceDialog({
     if (!open) {
       setName("");
       setRootPath("");
+      setModeStorage("value-map");
       setError(null);
       setIsBrowsing(false);
       setIsPending(false);
@@ -87,6 +108,20 @@ export function CreateWorkspaceDialog({
     setError(null);
 
     try {
+      const initResponse = await fetch("/api/workspaces/init", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rootPath: rootPath.trim(),
+          modeStorage,
+        }),
+      });
+
+      if (!initResponse.ok) {
+        const payload = await initResponse.json().catch(() => ({}));
+        throw new Error(payload.error ?? "That folder could not be initialized.");
+      }
+
       const response = await fetch(
         `/api/workspaces/tokens?root=${encodeURIComponent(rootPath.trim())}`,
         { cache: "no-store" }
@@ -113,7 +148,7 @@ export function CreateWorkspaceDialog({
     <dialog
       ref={dialogRef}
       className={cn(
-        "fixed left-1/2 top-1/2 z-50 w-[min(100vw-2rem,28rem)] -translate-x-1/2 -translate-y-1/2",
+        "fixed left-1/2 top-1/2 z-50 w-[min(100vw-2rem,32rem)] -translate-x-1/2 -translate-y-1/2",
         "rounded-xl border bg-background p-0 text-foreground shadow-xl",
         "backdrop:bg-black/50 open:animate-in open:fade-in-0"
       )}
@@ -164,6 +199,46 @@ export function CreateWorkspaceDialog({
             placeholder="Design system"
           />
         </div>
+
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">Mode storage</legend>
+          <p className="text-sm text-muted-foreground">
+            How modes are stored on disk. Applied when this folder has no
+            tokencraft.config.json yet; an existing config keeps its setting.
+          </p>
+          <div className="space-y-2">
+            {MODE_STORAGE_OPTIONS.map((option) => {
+              const selected = modeStorage === option.value;
+
+              return (
+                <label
+                  key={option.value}
+                  className={cn(
+                    "flex cursor-pointer gap-3 rounded-lg border px-3 py-2.5 transition-colors",
+                    selected
+                      ? "border-foreground/30 bg-muted/60"
+                      : "border-border hover:bg-muted/40"
+                  )}
+                >
+                  <input
+                    type="radio"
+                    name="mode-storage"
+                    value={option.value}
+                    checked={selected}
+                    onChange={() => setModeStorage(option.value)}
+                    className="mt-1"
+                  />
+                  <span className="space-y-0.5">
+                    <span className="block text-sm font-medium">{option.title}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {option.description}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
 
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
 

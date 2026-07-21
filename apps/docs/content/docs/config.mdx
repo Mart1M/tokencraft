@@ -44,6 +44,52 @@ Group files under collection names shown in the sidebar:
 
 The optional `modes` array defines mode columns for every file in that collection. If omitted, TokenCraft infers modes from the token data.
 
+## Mode storage
+
+Control how mode values are written on disk with the top-level `modeStorage` field:
+
+```json
+{
+  "version": 1,
+  "modeStorage": "value-map",
+  "collections": [
+    {
+      "name": "Semantic",
+      "files": ["tokens/semantic.tokens.json"],
+      "modes": ["light", "dark"]
+    }
+  ]
+}
+```
+
+| Value | Behavior |
+| --- | --- |
+| `value-map` (default) | Modes live in the **same file** as keys under `$value` / `value` |
+| `separate-files` | Each mode is its **own file**; `files[i]` maps to `modes[i]` |
+
+Choose this when opening a folder for the first time (Create workspace dialog). An existing `tokencraft.config.json` keeps its current setting.
+
+### Separate files example
+
+```json
+{
+  "version": 1,
+  "modeStorage": "separate-files",
+  "collections": [
+    {
+      "name": "Semantic",
+      "files": [
+        "tokens/semantic/light.tokens.json",
+        "tokens/semantic/dark.tokens.json"
+      ],
+      "modes": ["light", "dark"]
+    }
+  ]
+}
+```
+
+Each mode file stores scalar token values (not mode maps). TokenCraft merges them into one collection in the UI.
+
 ## Legacy `sources` format
 
 TokenCraft also accepts a `sources` array with `path` entries, for compatibility with other tools:

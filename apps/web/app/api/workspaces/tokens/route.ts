@@ -4,6 +4,9 @@ import { collectTokenModes } from "@/lib/tokens/display";
 import { getImportedTokenRows, getTokenSidebarCollections } from "@/lib/tokens/entries";
 import { assertDirectory, getWorkspaceFolderPaths, readWorkspaceTokenFiles, WorkspaceFsError } from "@/lib/tokens/fs";
 import { sanitizeFolderPathInput } from "@/lib/tokens/path-input";
+import { DEFAULT_MODE_STORAGE, parseTokencraftConfig, resolveModeStorage, TOKENCRAFT_CONFIG_FILENAME } from "@/lib/tokencraft/config";
+import fs from "node:fs/promises";
+import path from "node:path";
 
 const FIGMA_ORIGIN = "https://www.figma.com";
 
@@ -43,9 +46,17 @@ export async function GET(request: Request) {
 
   try {
     await assertDirectory(rootPath);
-    const [files, folders] = await Promise.all([
+    const [files, folders, modeStorage] = await Promise.all([
       readWorkspaceTokenFiles(rootPath),
       getWorkspaceFolderPaths(rootPath),
+      (async () => {
+        try {
+          const raw = await fs.readFile(path.join(rootPath, TOKENCRAFT_CONFIG_FILENAME), "utf8");
+          return resolveModeStorage(parseTokencraftConfig(raw));
+        } catch {
+          return DEFAULT_MODE_STORAGE;
+        }
+      })(),
     ]);
     const tokens = getImportedTokenRows(files);
     const collections = getTokenSidebarCollections(files);
@@ -57,6 +68,7 @@ export async function GET(request: Request) {
       collections,
       folders,
       modes,
+      modeStorage,
       tokenFileCount: files.length,
     }, { headers: getCorsHeaders(request) });
   } catch (error) {

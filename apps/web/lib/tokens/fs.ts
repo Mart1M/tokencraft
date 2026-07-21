@@ -5,18 +5,26 @@ import path from "node:path";
 import fg from "fast-glob";
 import writeFileAtomic from "write-file-atomic";
 
-import { type TokenFormat } from "@tokencraft/core";
+import { type ModeStorage, type TokenFormat } from "@tokencraft/core";
 
 import {
   TOKENCRAFT_CONFIG_FILENAME,
   TOKENFLOW_CONFIG_FILENAME,
+  DEFAULT_MODE_STORAGE,
   buildTokencraftConfigContent,
+  normalizeModeStorage,
   parseForeignToolConfig,
   parseTokencraftConfig,
+  resolveModeStorage,
   type ParsedWorkspaceConfig,
 } from "@/lib/tokencraft/config";
 import { flattenTokenEntries, type TokenFileMetadata } from "@/lib/tokens/flatten";
 import { buildJsonFromMetadata } from "@/lib/tokens/json-patch";
+import {
+  bindModesToFiles,
+  mergeSeparateModeFiles,
+  splitMetadataForModeFiles,
+} from "@/lib/tokens/mode-storage";
 import type { TokenDraft } from "@/lib/tokens/draft-utils";
 import { applyDraftsToMetadata } from "@/lib/workspaces/token-edit-operations";
 
@@ -57,6 +65,10 @@ export type LocalTokenFile = {
   path: string;
   collectionName: string;
   configuredModes?: string[];
+  /** Present when the workspace stores one file per mode. */
+  modeStorage?: ModeStorage;
+  /** Mode name → relative file path when using separate-files storage. */
+  modeFiles?: Record<string, string>;
   format: TokenFormat;
   tokenCount: number;
   metadata: TokenFileMetadata;
@@ -217,24 +229,81 @@ export async function discoverWorkspaceConfig(
   return discoverGenericTokenJsonFiles(rootPath);
 }
 
-export async function ensureTokencraftConfig(rootPath: string): Promise<boolean> {
+export async function ensureTokencraftConfig(
+  rootPath: string,
+  options?: { modeStorage?: ModeStorage }
+): Promise<boolean> {
   if (await tokencraftConfigExists(rootPath)) {
     return false;
   }
 
   const discovered = await discoverWorkspaceConfig(rootPath);
+  const modeStorage = normalizeModeStorage(options?.modeStorage);
 
-  if (!discovered?.files.length) {
+  if (!discovered?.files.length && !modeStorage) {
     return false;
   }
 
+  const config: ParsedWorkspaceConfig = discovered
+    ? {
+        ...discovered,
+        ...(modeStorage ? { modeStorage } : {}),
+      }
+    : {
+        version: 1,
+        files: [],
+        ...(modeStorage ? { modeStorage } : {}),
+      };
+
   await writeFileAtomic(
     path.join(rootPath, TOKENCRAFT_CONFIG_FILENAME),
-    buildTokencraftConfigContent(discovered),
+    buildTokencraftConfigContent(config),
     "utf8"
   );
 
   return true;
+}
+
+/**
+ * Ensure a tokencraft.config.json exists with the given mode storage preference.
+ * Used when opening/creating a workspace so the choice is persisted even before
+ * token files are discovered.
+ */
+export async function initWorkspaceConfig(
+  rootPath: string,
+  options?: { modeStorage?: ModeStorage }
+): Promise<{ created: boolean; modeStorage: ModeStorage }> {
+  const existing = await readWorkspaceConfig(rootPath);
+
+  if (existing) {
+    return {
+      created: false,
+      modeStorage: resolveModeStorage(existing),
+    };
+  }
+
+  const modeStorage = normalizeModeStorage(options?.modeStorage) ?? DEFAULT_MODE_STORAGE;
+  const discovered = await discoverWorkspaceConfig(rootPath);
+  const config: ParsedWorkspaceConfig = {
+    version: 1,
+    files: discovered?.files ?? [],
+    ...(discovered?.fileCollections ? { fileCollections: discovered.fileCollections } : {}),
+    ...(discovered?.folders ? { folders: discovered.folders } : {}),
+    ...(modeStorage !== DEFAULT_MODE_STORAGE ? { modeStorage } : {}),
+  };
+
+  // Always write so an explicit value-map choice is still recorded when we
+  // discovered files (or so an empty separate-files workspace has a config).
+  if (modeStorage !== DEFAULT_MODE_STORAGE || config.files.length > 0 || (config.folders?.length ?? 0) > 0) {
+    await writeFileAtomic(
+      path.join(rootPath, TOKENCRAFT_CONFIG_FILENAME),
+      buildTokencraftConfigContent(config),
+      "utf8"
+    );
+    return { created: true, modeStorage };
+  }
+
+  return { created: false, modeStorage };
 }
 
 export async function scanWorkspaceFiles(rootPath: string): Promise<string[]> {
@@ -357,6 +426,7 @@ export async function readWorkspaceTokenFiles(rootPath: string): Promise<LocalTo
   await ensureTokencraftConfig(rootPath);
 
   const config = await readWorkspaceConfig(rootPath);
+  const modeStorage = resolveModeStorage(config);
   const relativePaths = await scanWorkspaceFiles(rootPath);
   const files: LocalTokenFile[] = [];
 
@@ -368,6 +438,7 @@ export async function readWorkspaceTokenFiles(rootPath: string): Promise<LocalTo
 
       files.push({
         ...inspected,
+        modeStorage,
         ...(collectionConfig?.name
           ? { collectionName: collectionConfig.name }
           : {}),
@@ -380,7 +451,78 @@ export async function readWorkspaceTokenFiles(rootPath: string): Promise<LocalTo
     }
   }
 
-  return files.sort((left, right) => left.path.localeCompare(right.path));
+  if (modeStorage !== "separate-files" || !config?.fileCollections) {
+    return files.sort((left, right) => left.path.localeCompare(right.path));
+  }
+
+  return mergeTokenFilesByCollection(files, config);
+}
+
+function mergeTokenFilesByCollection(
+  files: LocalTokenFile[],
+  config: ParsedWorkspaceConfig
+): LocalTokenFile[] {
+  const filesByPath = new Map(files.map((file) => [file.path, file]));
+  const grouped = new Map<string, { modes?: string[]; paths: string[] }>();
+
+  for (const [filePath, collection] of Object.entries(config.fileCollections ?? {})) {
+    const existing = grouped.get(collection.name) ?? {
+      modes: collection.modes,
+      paths: [],
+    };
+
+    if (!existing.modes && collection.modes) {
+      existing.modes = collection.modes;
+    }
+
+    existing.paths.push(filePath);
+    grouped.set(collection.name, existing);
+  }
+
+  const merged: LocalTokenFile[] = [];
+  const consumedPaths = new Set<string>();
+
+  for (const [collectionName, group] of [...grouped.entries()].sort(([left], [right]) =>
+    left.localeCompare(right)
+  )) {
+    const uniquePaths = [...new Set(group.paths)];
+    const bindings = bindModesToFiles(group.modes, uniquePaths);
+
+    if (bindings.length === 0) {
+      continue;
+    }
+
+    const modeFiles = bindings
+      .map((binding) => {
+        const file = filesByPath.get(binding.path);
+        return file ? { mode: binding.mode, file } : null;
+      })
+      .filter((entry): entry is { mode: string; file: LocalTokenFile } => entry !== null);
+
+    if (modeFiles.length === 0) {
+      continue;
+    }
+
+    for (const binding of bindings) {
+      consumedPaths.add(binding.path);
+    }
+
+    merged.push(
+      mergeSeparateModeFiles({
+        collectionName,
+        modeFiles,
+        modeStorage: "separate-files",
+      })
+    );
+  }
+
+  for (const file of files) {
+    if (!consumedPaths.has(file.path)) {
+      merged.push(file);
+    }
+  }
+
+  return merged.sort((left, right) => left.collectionName.localeCompare(right.collectionName));
 }
 
 export async function writeWorkspaceTokenDrafts(
@@ -414,8 +556,20 @@ export async function writeWorkspaceTokenDrafts(
     }
 
     const metadata = applyDraftsToMetadata(file.metadata, fileDrafts);
-    const content = `${JSON.stringify(buildJsonFromMetadata(metadata), null, 2)}\n`;
 
+    if (file.modeStorage === "separate-files" && file.modeFiles) {
+      const parts = splitMetadataForModeFiles(metadata, file.modeFiles);
+
+      for (const part of parts) {
+        const content = `${JSON.stringify(buildJsonFromMetadata(part.metadata), null, 2)}\n`;
+        await writeFileAtomic(toAbsolutePath(rootPath, part.path), content, "utf8");
+        savedFileCount += 1;
+      }
+
+      continue;
+    }
+
+    const content = `${JSON.stringify(buildJsonFromMetadata(metadata), null, 2)}\n`;
     await writeFileAtomic(toAbsolutePath(rootPath, file.path), content, "utf8");
     savedFileCount += 1;
   }
@@ -427,13 +581,20 @@ export async function writeWorkspaceTokenDrafts(
       continue;
     }
 
-    try {
-      await fs.unlink(toAbsolutePath(rootPath, file.path));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    const pathsToDelete =
+      file.modeStorage === "separate-files" && file.modeFiles
+        ? Object.values(file.modeFiles)
+        : [file.path];
+
+    for (const relativePath of pathsToDelete) {
+      try {
+        await fs.unlink(toAbsolutePath(rootPath, relativePath));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      await unregisterFileInWorkspaceConfig(rootPath, relativePath);
+      savedFileCount += 1;
     }
-    await unregisterFileInWorkspaceConfig(rootPath, file.path);
-    savedFileCount += 1;
   }
 
   return { savedFileCount };
@@ -569,6 +730,8 @@ export async function createTokenFile(
 ): Promise<LocalTokenFile> {
   const normalized = validateCollectionPath(relativePath);
   const absolutePath = toAbsolutePath(rootPath, normalized);
+  const config = await readWorkspaceConfig(rootPath);
+  const modeStorage = resolveModeStorage(config);
 
   try {
     await fs.access(absolutePath);
@@ -581,9 +744,31 @@ export async function createTokenFile(
 
   await fs.mkdir(path.dirname(absolutePath), { recursive: true });
   await writeFileAtomic(absolutePath, "{}\n", "utf8");
-  await registerFileInWorkspaceConfig(rootPath, normalized, collectionName);
 
-  return inspectTokenJson(normalized, "{}");
+  const explicitName = collectionName?.trim();
+  const name =
+    explicitName ||
+    (modeStorage === "separate-files" ? formatCollectionName(normalized) : undefined);
+  const modes = modeStorage === "separate-files" ? ["Default"] : undefined;
+  await registerFileInWorkspaceConfig(rootPath, normalized, name, modes);
+
+  const inspected = inspectTokenJson(normalized, "{}");
+
+  if (modeStorage === "separate-files") {
+    return {
+      ...inspected,
+      collectionName: name ?? inspected.collectionName,
+      configuredModes: ["Default"],
+      modeStorage,
+      modeFiles: { Default: normalized },
+    };
+  }
+
+  return {
+    ...inspected,
+    ...(explicitName ? { collectionName: explicitName } : {}),
+    modeStorage,
+  };
 }
 
 export async function createWorkspaceFolder(rootPath: string, relativePath: string) {

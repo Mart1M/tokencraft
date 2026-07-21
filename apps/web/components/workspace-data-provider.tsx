@@ -10,7 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 
-import type { LocalWorkspace } from "@tokencraft/core";
+import type { LocalWorkspace, ModeStorage } from "@tokencraft/core";
 import type { ImportedTokenRow, TokenSidebarCollection } from "@/lib/tokens/entries";
 import { getWorkspace, setLastOpenedWorkspaceId } from "@/lib/workspaces/local-store";
 
@@ -19,6 +19,7 @@ type WorkspaceTokenData = {
   collections: TokenSidebarCollection[];
   folders: string[];
   modes: string[];
+  modeStorage?: ModeStorage;
   tokenFileCount: number;
 };
 

@@ -51,6 +51,7 @@ export type TokenSidebarCollection = {
   name: string;
   modes: string[];
   path: string;
+  modeStorage?: import("@tokencraft/core").ModeStorage;
   pendingDelete?: boolean;
 };
 
@@ -68,6 +69,31 @@ function collectModesFromStoredTokens(tokens: StoredTokenEntry[]) {
   return collectTokenModes(modeRows);
 }
 
+function formatCollectionPath(file: LocalTokenFile) {
+  if (file.modeFiles && Object.keys(file.modeFiles).length > 0) {
+    const paths = Object.values(file.modeFiles);
+    if (paths.length === 1) {
+      return paths[0];
+    }
+
+    const directories = new Set(
+      paths.map((relativePath) => {
+        const index = relativePath.lastIndexOf("/");
+        return index === -1 ? "." : relativePath.slice(0, index);
+      })
+    );
+
+    if (directories.size === 1) {
+      const directory = [...directories][0];
+      return directory === "." ? `${paths.length} mode files` : `${directory}/ (${paths.length} modes)`;
+    }
+
+    return `${paths.length} mode files`;
+  }
+
+  return file.path;
+}
+
 export function getTokenSidebarCollections(
   tokenFiles: LocalTokenFile[],
   pendingCollectionDeletes: string[] = []
@@ -81,7 +107,8 @@ export function getTokenSidebarCollections(
       id: file.id,
       name: file.collectionName,
       modes: modes.length > 0 ? modes : ["Default"],
-      path: file.path,
+      path: formatCollectionPath(file),
+      ...(file.modeStorage ? { modeStorage: file.modeStorage } : {}),
       ...(pendingCollectionDeletes.includes(file.id) ? { pendingDelete: true } : {}),
     };
   });

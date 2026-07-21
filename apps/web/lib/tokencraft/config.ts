@@ -1,13 +1,17 @@
 import {
   TOKENCRAFT_CONFIG_FILENAME,
+  type ModeStorage,
   type TokencraftConfigFile,
 } from "@tokencraft/core";
 
 export { TOKENCRAFT_CONFIG_FILENAME };
+export type { ModeStorage };
 
 export const TOKENFLOW_CONFIG_FILENAME = "tokenflow.config.json";
+export const DEFAULT_MODE_STORAGE: ModeStorage = "value-map";
 
 const CONFIG_VERSION = 1 as const;
+const MODE_STORAGE_VALUES = new Set<ModeStorage>(["value-map", "separate-files"]);
 
 export type WorkspaceFileCollection = {
   name: string;
@@ -18,6 +22,20 @@ export type ParsedWorkspaceConfig = TokencraftConfigFile & {
   fileCollections?: Record<string, WorkspaceFileCollection>;
   folders?: string[];
 };
+
+export function normalizeModeStorage(value: unknown): ModeStorage | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+
+  return MODE_STORAGE_VALUES.has(value as ModeStorage)
+    ? (value as ModeStorage)
+    : undefined;
+}
+
+export function resolveModeStorage(config?: Pick<ParsedWorkspaceConfig, "modeStorage"> | null): ModeStorage {
+  return config?.modeStorage ?? DEFAULT_MODE_STORAGE;
+}
 
 function normalizeFilePaths(paths: unknown) {
   if (!Array.isArray(paths)) {
@@ -110,15 +128,22 @@ export function parseTokencraftConfig(content: string): ParsedWorkspaceConfig | 
   try {
     const json = JSON.parse(content) as Record<string, unknown>;
     const folders = normalizeFolderPaths(json.folders);
+    const modeStorage = normalizeModeStorage(json.modeStorage);
+    const withModeStorage = <T extends ParsedWorkspaceConfig>(config: T): T =>
+      modeStorage ? { ...config, modeStorage } : config;
 
     if (Array.isArray(json.files)) {
       const files = normalizeFilePaths(json.files);
 
-      if (files.length === 0 && folders.length === 0) {
+      if (files.length === 0 && folders.length === 0 && !modeStorage) {
         return null;
       }
 
-      return { version: CONFIG_VERSION, files, ...(folders.length ? { folders } : {}) };
+      return withModeStorage({
+        version: CONFIG_VERSION,
+        files,
+        ...(folders.length ? { folders } : {}),
+      });
     }
 
     if (Array.isArray(json.sources)) {
@@ -130,26 +155,34 @@ export function parseTokencraftConfig(content: string): ParsedWorkspaceConfig | 
         )
       );
 
-      if (files.length === 0 && folders.length === 0) {
+      if (files.length === 0 && folders.length === 0 && !modeStorage) {
         return null;
       }
 
-      return { version: CONFIG_VERSION, files, ...(folders.length ? { folders } : {}) };
+      return withModeStorage({
+        version: CONFIG_VERSION,
+        files,
+        ...(folders.length ? { folders } : {}),
+      });
     }
 
     const collectionsConfig = parseCollectionsConfig(json.collections);
 
     if (collectionsConfig) {
-      return {
+      return withModeStorage({
         version: CONFIG_VERSION,
         files: collectionsConfig.files,
         fileCollections: collectionsConfig.fileCollections,
         ...(folders.length ? { folders } : {}),
-      };
+      });
     }
 
-    if (folders.length) {
-      return { version: CONFIG_VERSION, files: [], folders };
+    if (folders.length || modeStorage) {
+      return withModeStorage({
+        version: CONFIG_VERSION,
+        files: [],
+        ...(folders.length ? { folders } : {}),
+      });
     }
 
     return null;
@@ -158,9 +191,14 @@ export function parseTokencraftConfig(content: string): ParsedWorkspaceConfig | 
   }
 }
 
-export function serializeTokencraftConfig(files: string[], folders: string[] = []): string {
+export function serializeTokencraftConfig(
+  files: string[],
+  folders: string[] = [],
+  modeStorage?: ModeStorage
+): string {
   const payload = {
     version: CONFIG_VERSION,
+    ...(modeStorage && modeStorage !== DEFAULT_MODE_STORAGE ? { modeStorage } : {}),
     files: normalizeFilePaths(files),
     ...(normalizeFolderPaths(folders).length ? { folders: normalizeFolderPaths(folders) } : {}),
   };
@@ -197,11 +235,16 @@ function groupFileCollections(
 
 export function buildTokencraftConfigContent(config: ParsedWorkspaceConfig): string {
   const folders = normalizeFolderPaths(config.folders);
+  const modeStorage =
+    config.modeStorage && config.modeStorage !== DEFAULT_MODE_STORAGE
+      ? config.modeStorage
+      : undefined;
 
   if (config.fileCollections && Object.keys(config.fileCollections).length > 0) {
     return `${JSON.stringify(
       {
         version: CONFIG_VERSION,
+        ...(modeStorage ? { modeStorage } : {}),
         collections: groupFileCollections(config.fileCollections),
         ...(folders.length ? { folders } : {}),
       },
@@ -210,7 +253,7 @@ export function buildTokencraftConfigContent(config: ParsedWorkspaceConfig): str
     )}\n`;
   }
 
-  return serializeTokencraftConfig(config.files, folders);
+  return serializeTokencraftConfig(config.files, folders, config.modeStorage);
 }
 
 export function parseForeignToolConfig(content: string): ParsedWorkspaceConfig | null {

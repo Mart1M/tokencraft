@@ -7,12 +7,17 @@ import {
   TOKENCRAFT_CONFIG_FILENAME,
   buildTokencraftConfigContent,
   parseTokencraftConfig,
+  resolveModeStorage,
   type ParsedWorkspaceConfig,
   type WorkspaceFileCollection,
 } from "@/lib/tokencraft/config";
 import { looksLikeModeMap } from "@/lib/tokens/display";
 import type { StoredTokenEntry, TokenFileMetadata } from "@/lib/tokens/flatten";
 import { buildJsonFromMetadata } from "@/lib/tokens/json-patch";
+import {
+  renameModeFilePath,
+  suggestModeFilePath,
+} from "@/lib/tokens/mode-storage";
 import type { StoredTokenRawValue } from "@/lib/tokens/raw-value";
 import {
   readWorkspaceTokenFiles,
@@ -207,6 +212,31 @@ function ensureFileCollections(
 ): Record<string, WorkspaceFileCollection> {
   const result = { ...(config.fileCollections ?? {}) };
 
+  for (const file of files) {
+    if (file.modeFiles) {
+      for (const relativePath of Object.values(file.modeFiles)) {
+        if (result[relativePath]) {
+          continue;
+        }
+
+        result[relativePath] = {
+          name: file.collectionName,
+          ...(file.configuredModes ? { modes: file.configuredModes } : {}),
+        };
+      }
+      continue;
+    }
+
+    if (result[file.path]) {
+      continue;
+    }
+
+    result[file.path] = {
+      name: file.collectionName,
+      ...(file.configuredModes ? { modes: file.configuredModes } : {}),
+    };
+  }
+
   for (const filePath of config.files) {
     if (result[filePath]) {
       continue;
@@ -222,11 +252,20 @@ function ensureFileCollections(
   return result;
 }
 
+async function writeConfig(rootPath: string, config: ParsedWorkspaceConfig) {
+  await writeFileAtomic(
+    path.join(rootPath, TOKENCRAFT_CONFIG_FILENAME),
+    buildTokencraftConfigContent(config),
+    "utf8"
+  );
+}
+
 async function updateConfigModes(
   rootPath: string,
   file: LocalTokenFile,
   modes: string[],
-  files: LocalTokenFile[]
+  files: LocalTokenFile[],
+  modeFiles?: Record<string, string>
 ) {
   const config = await readWorkspaceConfig(rootPath);
 
@@ -235,6 +274,42 @@ async function updateConfigModes(
   }
 
   const fileCollections = ensureFileCollections(config, files);
+  const bindings = modeFiles ?? file.modeFiles;
+
+  if (bindings && Object.keys(bindings).length > 0) {
+    // Drop previous paths for this collection, then re-register in mode order.
+    for (const [filePath, collection] of Object.entries(fileCollections)) {
+      if (collection.name === file.collectionName) {
+        delete fileCollections[filePath];
+      }
+    }
+
+    const orderedPaths = modes
+      .map((modeName) => bindings[modeName])
+      .filter((relativePath): relativePath is string => Boolean(relativePath));
+
+    for (const relativePath of orderedPaths) {
+      fileCollections[relativePath] = {
+        name: file.collectionName,
+        modes,
+      };
+    }
+
+    const otherFiles = config.files.filter((candidate) => {
+      const collection = config.fileCollections?.[candidate];
+      return collection?.name !== file.collectionName;
+    });
+
+    const updated: ParsedWorkspaceConfig = {
+      ...config,
+      files: [...new Set([...otherFiles, ...orderedPaths])],
+      fileCollections,
+    };
+
+    await writeConfig(rootPath, updated);
+    return;
+  }
+
   const existing = fileCollections[file.path] ?? { name: file.collectionName };
 
   fileCollections[file.path] = {
@@ -247,11 +322,7 @@ async function updateConfigModes(
     fileCollections,
   };
 
-  await writeFileAtomic(
-    path.join(rootPath, TOKENCRAFT_CONFIG_FILENAME),
-    buildTokencraftConfigContent(updated),
-    "utf8"
-  );
+  await writeConfig(rootPath, updated);
 }
 
 async function getCollectionFile(rootPath: string, fileId: string) {
@@ -283,8 +354,36 @@ export async function renameWorkspaceCollectionMode(
 
   const nextModes = replaceModeInModesList(input.modes, oldMode, newMode);
   const { file, files } = await getCollectionFile(rootPath, input.fileId);
-  const metadata = applyModeRenameToMetadata(file.metadata, oldMode, newMode);
+  const config = await readWorkspaceConfig(rootPath);
+  const modeStorage = resolveModeStorage(config);
 
+  if (modeStorage === "separate-files" && file.modeFiles?.[oldMode]) {
+    const oldPath = file.modeFiles[oldMode];
+    const suggestedPath = renameModeFilePath(oldPath, oldMode, newMode);
+    let nextPath = suggestedPath;
+
+    if (nextPath !== oldPath) {
+      const absoluteOld = toAbsolutePath(rootPath, oldPath);
+      const absoluteNew = toAbsolutePath(rootPath, nextPath);
+
+      try {
+        await fs.access(absoluteNew);
+        nextPath = oldPath;
+      } catch {
+        await fs.mkdir(path.dirname(absoluteNew), { recursive: true });
+        await fs.rename(absoluteOld, absoluteNew);
+      }
+    }
+
+    const nextModeFiles = { ...file.modeFiles };
+    delete nextModeFiles[oldMode];
+    nextModeFiles[newMode] = nextPath;
+
+    await updateConfigModes(rootPath, file, nextModes, files, nextModeFiles);
+    return { modes: nextModes };
+  }
+
+  const metadata = applyModeRenameToMetadata(file.metadata, oldMode, newMode);
   await writeTokenFile(rootPath, file, metadata);
   await updateConfigModes(rootPath, file, nextModes, files);
 
@@ -302,6 +401,34 @@ export async function addWorkspaceCollectionMode(
   const mode = normalizeModeName(input.mode);
   const nextModes = addModeToModesList(input.modes, mode);
   const { file, files } = await getCollectionFile(rootPath, input.fileId);
+  const config = await readWorkspaceConfig(rootPath);
+  const modeStorage = resolveModeStorage(config);
+
+  if (modeStorage === "separate-files") {
+    const existingModeFiles = file.modeFiles ?? {};
+    const relativePath = suggestModeFilePath(existingModeFiles, mode);
+    const absolutePath = toAbsolutePath(rootPath, relativePath);
+
+    try {
+      await fs.access(absolutePath);
+      throw new ModeOperationError(`A mode file already exists at "${relativePath}".`, 409);
+    } catch (error) {
+      if (error instanceof ModeOperationError) {
+        throw error;
+      }
+    }
+
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await writeFileAtomic(absolutePath, "{}\n", "utf8");
+
+    const nextModeFiles = {
+      ...existingModeFiles,
+      [mode]: relativePath,
+    };
+
+    await updateConfigModes(rootPath, file, nextModes, files, nextModeFiles);
+    return { modes: nextModes };
+  }
 
   await updateConfigModes(rootPath, file, nextModes, files);
 
@@ -324,8 +451,28 @@ export async function deleteWorkspaceCollectionMode(
 
   const nextModes = removeModeFromModesList(input.modes, mode);
   const { file, files } = await getCollectionFile(rootPath, input.fileId);
-  const metadata = applyModeDeleteToMetadata(file.metadata, mode);
+  const config = await readWorkspaceConfig(rootPath);
+  const modeStorage = resolveModeStorage(config);
 
+  if (modeStorage === "separate-files" && file.modeFiles?.[mode]) {
+    const relativePath = file.modeFiles[mode];
+
+    try {
+      await fs.unlink(toAbsolutePath(rootPath, relativePath));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw error;
+      }
+    }
+
+    const nextModeFiles = { ...file.modeFiles };
+    delete nextModeFiles[mode];
+
+    await updateConfigModes(rootPath, file, nextModes, files, nextModeFiles);
+    return { modes: nextModes };
+  }
+
+  const metadata = applyModeDeleteToMetadata(file.metadata, mode);
   await writeTokenFile(rootPath, file, metadata);
   await updateConfigModes(rootPath, file, nextModes, files);
 

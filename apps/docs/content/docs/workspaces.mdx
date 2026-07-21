@@ -32,4 +32,9 @@ Token files appear as **collections** in the left sidebar. When `tokencraft.conf
 
 Collections can define **modes** (e.g. `light`, `dark`, `mobile`). Each mode is a column in the token grid. Modes can be renamed or removed from the column header context menu.
 
-Modes are stored in your config and reflected in the token files on save.
+Modes are stored according to the workspace `modeStorage` setting in `tokencraft.config.json`:
+
+- **`value-map`** (default) — mode keys under `$value` / `value` in the same JSON file
+- **`separate-files`** — one token file per mode within the collection
+
+Pick this when creating/opening a workspace that does not already have a config file.

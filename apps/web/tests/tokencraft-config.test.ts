@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseTokencraftConfig, serializeTokencraftConfig } from "@/lib/tokencraft/config";
+import {
+  buildTokencraftConfigContent,
+  parseTokencraftConfig,
+  serializeTokencraftConfig,
+} from "@/lib/tokencraft/config";
 
 describe("parseTokencraftConfig", () => {
   it("parses the files array format", () => {
@@ -14,6 +18,37 @@ describe("parseTokencraftConfig", () => {
     expect(config).toEqual({
       version: 1,
       files: ["tokens/base.json", "tokens/semantic.json"]
+    });
+  });
+
+  it("parses modeStorage on an otherwise empty config", () => {
+    const config = parseTokencraftConfig(
+      JSON.stringify({
+        version: 1,
+        modeStorage: "separate-files",
+        files: [],
+      })
+    );
+
+    expect(config).toEqual({
+      version: 1,
+      modeStorage: "separate-files",
+      files: [],
+    });
+  });
+
+  it("ignores unknown modeStorage values", () => {
+    const config = parseTokencraftConfig(
+      JSON.stringify({
+        version: 1,
+        modeStorage: "something-else",
+        files: ["tokens/base.json"],
+      })
+    );
+
+    expect(config).toEqual({
+      version: 1,
+      files: ["tokens/base.json"],
     });
   });
 
@@ -103,12 +138,24 @@ describe("serializeTokencraftConfig", () => {
       )}\n`
     );
   });
+
+  it("writes modeStorage when it is not the default", () => {
+    expect(serializeTokencraftConfig([], [], "separate-files")).toBe(
+      `${JSON.stringify(
+        {
+          version: 1,
+          modeStorage: "separate-files",
+          files: [],
+        },
+        null,
+        2
+      )}\n`
+    );
+  });
 });
 
 describe("buildTokencraftConfigContent", () => {
-  it("writes collections when foreign metadata is available", async () => {
-    const { buildTokencraftConfigContent } = await import("@/lib/tokencraft/config");
-
+  it("writes collections when foreign metadata is available", () => {
     expect(
       buildTokencraftConfigContent({
         version: 1,
@@ -138,9 +185,49 @@ describe("buildTokencraftConfigContent", () => {
     );
   });
 
-  it("writes explicit folders alongside collections", async () => {
-    const { buildTokencraftConfigContent } = await import("@/lib/tokencraft/config");
+  it("writes modeStorage with collections", () => {
+    expect(
+      buildTokencraftConfigContent({
+        version: 1,
+        modeStorage: "separate-files",
+        files: [
+          "tokens/semantic/light.tokens.json",
+          "tokens/semantic/dark.tokens.json",
+        ],
+        fileCollections: {
+          "tokens/semantic/light.tokens.json": {
+            name: "Semantic",
+            modes: ["light", "dark"],
+          },
+          "tokens/semantic/dark.tokens.json": {
+            name: "Semantic",
+            modes: ["light", "dark"],
+          },
+        },
+      })
+    ).toBe(
+      `${JSON.stringify(
+        {
+          version: 1,
+          modeStorage: "separate-files",
+          collections: [
+            {
+              name: "Semantic",
+              files: [
+                "tokens/semantic/light.tokens.json",
+                "tokens/semantic/dark.tokens.json",
+              ],
+              modes: ["light", "dark"],
+            },
+          ],
+        },
+        null,
+        2
+      )}\n`
+    );
+  });
 
+  it("writes explicit folders alongside collections", () => {
     expect(
       buildTokencraftConfigContent({
         version: 1,

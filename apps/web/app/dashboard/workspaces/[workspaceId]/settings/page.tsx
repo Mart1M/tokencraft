@@ -96,6 +96,19 @@ function WorkspaceSettingsContent() {
               if one exists.
             </p>
           </div>
+
+          <div className="space-y-1">
+            <span className="text-sm font-medium">Mode storage</span>
+            <p className="rounded-md border bg-muted px-3 py-2 text-sm text-muted-foreground">
+              {data?.modeStorage === "separate-files"
+                ? "Separate files — each mode is its own token file"
+                : "Same file — modes live under $value / value in JSON"}
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Set when the workspace was created (or in{" "}
+              <code>tokencraft.config.json</code> as <code>modeStorage</code>).
+            </p>
+          </div>
         </section>
 
         <section className="space-y-3 border-t pt-8">
