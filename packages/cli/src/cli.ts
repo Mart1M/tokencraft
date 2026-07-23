@@ -154,7 +154,7 @@ const program = new Command();
 program
   .name("tokencraft")
   .description("Local-first design token editor")
-  .version("0.1.3");
+  .version("0.1.5");
 
 program
   .argument("[path]", "project folder to open (omit to pick one from the welcome screen)")

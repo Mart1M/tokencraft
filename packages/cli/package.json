@@ -1,6 +1,6 @@
 {
   "name": "tokencraft",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "Local-first design token editor — visualize and edit your project's *.tokens.json files from the browser.",
   "license": "MIT",

@@ -4,7 +4,7 @@ import {
 } from "@/lib/tokens/display";
 import type { ImportedTokenRow } from "@/lib/tokens/entries";
 import { flattenTokenEntries } from "@/lib/tokens/flatten";
-import { mergeTokenEntriesAcrossModes } from "@/lib/tokens/mode-storage";
+import { mergeTokenEntriesAcrossModes } from "@/lib/tokens/mode-merge";
 
 export type JsonDocumentInput = {
   mode: string | null;
