@@ -24,6 +24,25 @@ export type ModeFileBinding = {
   path: string;
 };
 
+export type DetectedModeGroup = {
+  collectionName: string;
+  modes: string[];
+  paths: string[];
+};
+
+/** Minimum shared-token coverage (intersection / smaller file) to treat siblings as modes. */
+export const SEPARATE_MODE_OVERLAP_THRESHOLD = 0.5;
+
+const PREFERRED_MODE_ORDER = [
+  "light",
+  "dark",
+  "default",
+  "value",
+  "compact",
+  "hover",
+  "active",
+];
+
 /**
  * Pair collection files with mode names by index.
  * Extra files beyond the modes list are ignored for mode binding.
@@ -46,8 +65,167 @@ export function bindModesToFiles(
   return bindings;
 }
 
+export function modeNameFromFilePath(filePath: string) {
+  const base = path.posix.basename(filePath);
+  return base.replace(/\.tokens\.json$/i, "").replace(/\.json$/i, "") || base;
+}
+
+export function collectionNameFromDirectory(directory: string) {
+  const segments = directory
+    .split("/")
+    .filter(Boolean)
+    .map((segment) =>
+      segment
+        .replace(/[-_]+/g, " ")
+        .replace(/\btokens?\b/gi, "")
+        .replace(/\s+/g, " ")
+        .trim()
+    )
+    .filter(Boolean);
+
+  const deduped = segments.filter(
+    (segment, index) =>
+      index === 0 || segment.toLowerCase() !== segments[index - 1].toLowerCase()
+  );
+
+  return deduped.length > 0 ? deduped.join(" / ") : directory || "Collection";
+}
+
+function compareModeNames(left: string, right: string) {
+  const leftIndex = PREFERRED_MODE_ORDER.indexOf(left.toLowerCase());
+  const rightIndex = PREFERRED_MODE_ORDER.indexOf(right.toLowerCase());
+
+  if (leftIndex !== -1 || rightIndex !== -1) {
+    if (leftIndex === -1) return 1;
+    if (rightIndex === -1) return -1;
+    if (leftIndex !== rightIndex) return leftIndex - rightIndex;
+  }
+
+  return left.localeCompare(right);
+}
+
+function tokenPathOverlapCoverage(left: Set<string>, right: Set<string>) {
+  if (left.size === 0 || right.size === 0) {
+    return 0;
+  }
+
+  let intersection = 0;
+  const [smaller, larger] = left.size <= right.size ? [left, right] : [right, left];
+
+  for (const tokenPath of smaller) {
+    if (larger.has(tokenPath)) {
+      intersection += 1;
+    }
+  }
+
+  return intersection / smaller.size;
+}
+
+/**
+ * Detect sibling token files that share enough token paths to act as modes of
+ * one collection (e.g. semantic/legacy/light.json + dark.json).
+ */
+export function detectSeparateModeGroups(
+  files: Array<{ path: string; tokenPaths: string[] }>,
+  options?: { threshold?: number }
+): DetectedModeGroup[] {
+  const threshold = options?.threshold ?? SEPARATE_MODE_OVERLAP_THRESHOLD;
+  const byDirectory = new Map<string, Array<{ path: string; tokenPaths: Set<string> }>>();
+
+  for (const file of files) {
+    if (file.tokenPaths.length === 0) {
+      continue;
+    }
+
+    const directory = path.posix.dirname(file.path);
+    const bucket = byDirectory.get(directory) ?? [];
+    bucket.push({ path: file.path, tokenPaths: new Set(file.tokenPaths) });
+    byDirectory.set(directory, bucket);
+  }
+
+  const groups: DetectedModeGroup[] = [];
+
+  for (const [directory, siblings] of byDirectory) {
+    if (siblings.length < 2) {
+      continue;
+    }
+
+    const parent = siblings.map((_, index) => index);
+
+    function find(index: number): number {
+      if (parent[index] !== index) {
+        parent[index] = find(parent[index]);
+      }
+      return parent[index];
+    }
+
+    function union(left: number, right: number) {
+      const rootLeft = find(left);
+      const rootRight = find(right);
+      if (rootLeft !== rootRight) {
+        parent[rootRight] = rootLeft;
+      }
+    }
+
+    for (let i = 0; i < siblings.length; i += 1) {
+      for (let j = i + 1; j < siblings.length; j += 1) {
+        const coverage = tokenPathOverlapCoverage(
+          siblings[i].tokenPaths,
+          siblings[j].tokenPaths
+        );
+        if (coverage >= threshold) {
+          union(i, j);
+        }
+      }
+    }
+
+    const clusters = new Map<number, typeof siblings>();
+    for (let index = 0; index < siblings.length; index += 1) {
+      const root = find(index);
+      const cluster = clusters.get(root) ?? [];
+      cluster.push(siblings[index]);
+      clusters.set(root, cluster);
+    }
+
+    for (const cluster of clusters.values()) {
+      if (cluster.length < 2) {
+        continue;
+      }
+
+      const ordered = [...cluster].sort((left, right) =>
+        compareModeNames(modeNameFromFilePath(left.path), modeNameFromFilePath(right.path))
+      );
+      const modes = ordered.map((file) => modeNameFromFilePath(file.path));
+      const paths = ordered.map((file) => file.path);
+
+      // Avoid collapsing files whose basenames collide after stripping extensions.
+      if (new Set(modes).size !== modes.length) {
+        continue;
+      }
+
+      groups.push({
+        collectionName: collectionNameFromDirectory(directory),
+        modes,
+        paths,
+      });
+    }
+  }
+
+  return groups.sort((left, right) =>
+    left.collectionName.localeCompare(right.collectionName)
+  );
+}
+
 export function collectionIdFromPaths(paths: string[]) {
   return createHash("sha1").update(paths.slice().sort().join("\0")).digest("hex").slice(0, 16);
+}
+
+/** Stable id for separate-files collections so mode file renames don't change selection. */
+export function collectionIdFromName(collectionName: string) {
+  return createHash("sha1")
+    .update(`collection:${collectionName}`)
+    .digest("hex")
+    .slice(0, 16);
 }
 
 function displayToRaw(display: TokenDisplayValue): StoredTokenRawValue {
@@ -61,8 +239,34 @@ function displayToRaw(display: TokenDisplayValue): StoredTokenRawValue {
 function scalarRawFromEntry(entry: StoredTokenEntry): StoredTokenRawValue {
   const raw = entryToRawValue(entry);
 
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+  // Multi-layer shadows (and similar) must stay arrays — do not fall through to
+  // display.text, which is only a CSS-like preview string.
+  if (Array.isArray(raw)) {
+    return raw;
+  }
+
+  if (raw && typeof raw === "object") {
     const record = raw as Record<string, StoredTokenRawValue>;
+
+    // Single composite token object (shadow / border / typography / …).
+    if (
+      "blur" in record ||
+      "offsetX" in record ||
+      "offsetY" in record ||
+      "x" in record ||
+      "y" in record ||
+      "color" in record ||
+      "width" in record ||
+      "fontSize" in record ||
+      "fontFamily" in record ||
+      "fontWeight" in record ||
+      "url" in record ||
+      "dashArray" in record ||
+      "duration" in record
+    ) {
+      return record;
+    }
+
     const firstKey = Object.keys(record)[0];
     if (firstKey !== undefined) {
       return record[firstKey];
@@ -88,7 +292,7 @@ function scalarRawFromEntry(entry: StoredTokenEntry): StoredTokenRawValue {
   return entry.value;
 }
 
-function mergeTokenEntriesAcrossModes(
+export function mergeTokenEntriesAcrossModes(
   modeEntries: Array<{ mode: string; tokens: StoredTokenEntry[] }>
 ): StoredTokenEntry[] {
   const byPath = new Map<
@@ -170,7 +374,7 @@ export function mergeSeparateModeFiles(input: {
   ].sort();
 
   return {
-    id: collectionIdFromPaths(paths),
+    id: collectionIdFromName(collectionName),
     path: paths[0] ?? collectionName,
     collectionName,
     configuredModes: modes,

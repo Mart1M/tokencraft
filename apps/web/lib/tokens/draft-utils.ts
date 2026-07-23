@@ -2,6 +2,7 @@ import type { ImportedTokenRow } from "@/lib/tokens/entries";
 import {
   buildTokenDisplayValue,
   buildTokenDisplayValueFromString,
+  looksLikeModeMap,
   resolveModeKey,
   type TokenDisplayValue,
 } from "@/lib/tokens/display";
@@ -142,6 +143,17 @@ export function draftFromDisplayValue(
   }
 
   if (token.type && isCompositeTokenType(token.type)) {
+    // Prefer arrays (multi-layer shadows) before objects — otherwise a
+    // per-mode array can be mistaken for the parent mode-map object.
+    const rawArray = resolveCompositeRawArray(token, mode);
+
+    if (rawArray) {
+      return {
+        valueKind: "literal",
+        rawValue: JSON.stringify(rawArray, null, 2),
+      };
+    }
+
     const rawObject = resolveCompositeRawObject(token, mode);
 
     if (rawObject) {
@@ -153,15 +165,6 @@ export function draftFromDisplayValue(
         ),
       };
     }
-
-    const rawArray = resolveCompositeRawArray(token, mode);
-
-    if (rawArray) {
-      return {
-        valueKind: "literal",
-        rawValue: JSON.stringify(rawArray),
-      };
-    }
   }
 
   return {
@@ -170,36 +173,89 @@ export function draftFromDisplayValue(
   };
 }
 
+function resolveRawModeValue(
+  token: ImportedTokenRow,
+  mode: string | null,
+): unknown {
+  const raw = token.raw;
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
+
+  if (!mode) {
+    return raw;
+  }
+
+  if (Array.isArray(raw) || typeof raw !== "object") {
+    return raw;
+  }
+
+  const record = raw as Record<string, unknown>;
+
+  if (Object.hasOwn(record, mode)) {
+    return record[mode];
+  }
+
+  if (token.modes) {
+    const modeKey = resolveModeKey(token.modes, mode);
+    if (modeKey && Object.hasOwn(record, modeKey)) {
+      return record[modeKey];
+    }
+  }
+
+  const normalized = mode.toLowerCase();
+  const matchedKey = Object.keys(record).find(
+    (key) => key.toLowerCase() === normalized,
+  );
+
+  return matchedKey ? record[matchedKey] : undefined;
+}
+
 function resolveCompositeRawObject(
   token: ImportedTokenRow,
   mode: string | null
 ): Record<string, unknown> | null {
-  const raw = resolveStoredRawObject(token.raw);
-  if (!raw) return null;
+  const modeValue = resolveRawModeValue(token, mode);
 
-  if (mode && token.modes) {
-    const modeKey = resolveModeKey(token.modes, mode);
-    const modeValue = modeKey ? raw[modeKey] : undefined;
-    if (modeValue && typeof modeValue === "object" && !Array.isArray(modeValue)) {
-      return modeValue as Record<string, unknown>;
+  if (modeValue && typeof modeValue === "object" && !Array.isArray(modeValue)) {
+    const record = modeValue as Record<string, unknown>;
+
+    // A mode-map mistaken for a shadow object has no layer fields.
+    if (
+      mode &&
+      !("blur" in record) &&
+      !("offsetX" in record) &&
+      !("offsetY" in record) &&
+      !("x" in record) &&
+      !("y" in record) &&
+      !("color" in record) &&
+      looksLikeModeMap(record, token.type)
+    ) {
+      return null;
     }
+
+    return record;
   }
 
-  return raw;
+  return null;
 }
 
 function resolveCompositeRawArray(
   token: ImportedTokenRow,
   mode: string | null
 ) {
-  if (mode && token.modes) {
-    const modeKey = resolveModeKey(token.modes, mode);
-    const raw = resolveStoredRawObject(token.raw);
-    const modeValue = modeKey ? raw?.[modeKey] : undefined;
-    if (Array.isArray(modeValue)) return modeValue;
+  const modeValue = resolveRawModeValue(token, mode);
+
+  if (Array.isArray(modeValue)) {
+    return modeValue;
   }
 
-  return resolveStoredRawArray(token.raw);
+  // No mode selected / single-value token: raw itself may be the layer list.
+  if (!mode) {
+    return resolveStoredRawArray(token.raw);
+  }
+
+  return null;
 }
 
 export function applyDraftToRow(

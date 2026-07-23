@@ -24,6 +24,7 @@ export const TOKEN_TYPE_OPTIONS: TokenTypeOption[] = [
   { value: "opacity", label: "Opacity" },
   { value: "border", label: "Border" },
   { value: "shadow", label: "Shadow" },
+  { value: "boxShadow", label: "Box shadow" },
   { value: "transition", label: "Transition" },
   { value: "strokeStyle", label: "Stroke style" },
   { value: "asset", label: "Asset" },

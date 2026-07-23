@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   extractTokenReferences,
   getTokenDependencyGraph,
+  resolveAliasChain,
 } from "@/lib/tokens/token-dependencies";
 import type { ImportedTokenRow } from "@/lib/tokens/entries";
 
@@ -109,5 +110,53 @@ describe("token dependencies", () => {
     const second = token("core:second", "color.second", "{color.first}");
 
     expect(getTokenDependencyGraph(first, [first, second], {}, null).cycle).not.toBeNull();
+  });
+
+  it("resolves multi-level alias chains to the final literal", () => {
+    const core = token("core:full", "vp.core.border-radius.full", "9999", {
+      type: "borderRadius",
+      display: { kind: "text", text: "9999" },
+    });
+    const semantic = token(
+      "semantic:full",
+      "vp.semantic.border-radius.full",
+      "{vp.core.border-radius.full}",
+      {
+        type: "borderRadius",
+        fileId: "semantic",
+        collectionName: "Semantic",
+        display: {
+          kind: "alias",
+          text: "{vp.core.border-radius.full}",
+          aliasPath: "vp.core.border-radius.full",
+        },
+      },
+    );
+
+    expect(resolveAliasChain("vp.semantic.border-radius.full", [core, semantic], null)).toEqual([
+      {
+        path: "vp.semantic.border-radius.full",
+        valueText: "{vp.core.border-radius.full}",
+        missing: false,
+        isAlias: true,
+      },
+      {
+        path: "vp.core.border-radius.full",
+        valueText: "9999",
+        missing: false,
+        isAlias: false,
+      },
+    ]);
+  });
+
+  it("marks missing aliases in the chain", () => {
+    expect(resolveAliasChain("color.missing", [], null)).toEqual([
+      {
+        path: "color.missing",
+        valueText: null,
+        missing: true,
+        isAlias: false,
+      },
+    ]);
   });
 });

@@ -14,6 +14,29 @@ function formatPrimitive(value: unknown) {
   return JSON.stringify(value);
 }
 
+function isShadowType(type?: string) {
+  return type === "shadow" || type === "boxShadow";
+}
+
+/** Format a DTCG or Tokens Studio shadow layer as a CSS-like string. */
+export function formatShadowLayer(value: Record<string, unknown>) {
+  const inset =
+    value.inset === true ||
+    value.inset === "true" ||
+    value.type === "innerShadow";
+
+  const parts = [
+    inset ? "inset" : null,
+    value.offsetX ?? value.x,
+    value.offsetY ?? value.y,
+    value.blur,
+    value.spread,
+    value.color,
+  ].filter((part) => part !== undefined && part !== null && part !== "");
+
+  return parts.map(formatPrimitive).join(" ");
+}
+
 function formatArrayValue(value: unknown[], type?: string) {
   if (type === "fontFamily" && value.every((item) => typeof item === "string")) {
     return value.join(", ");
@@ -27,8 +50,11 @@ function formatArrayValue(value: unknown[], type?: string) {
     return `cubic-bezier(${value.join(", ")})`;
   }
 
-  if (type === "shadow" && value.every((item) => item && typeof item === "object")) {
-    return `${value.length} layer${value.length === 1 ? "" : "s"}`;
+  if (isShadowType(type) && value.every((item) => item && typeof item === "object")) {
+    return value
+      .map((item) => formatShadowLayer(item as Record<string, unknown>))
+      .filter(Boolean)
+      .join(", ");
   }
 
   if (type === "gradient") {
@@ -95,17 +121,11 @@ function formatObjectValue(value: Record<string, unknown>, type?: string): strin
       : `dashed ${dashArray}`;
   }
 
-  if (type === "shadow" && ("blur" in value || "offsetX" in value)) {
-    return [
-      value.offsetX,
-      value.offsetY,
-      value.blur,
-      value.spread,
-      value.color,
-    ]
-      .filter((part) => part !== undefined && part !== null && part !== "")
-      .map(formatPrimitive)
-      .join(" ");
+  if (
+    isShadowType(type) &&
+    ("blur" in value || "offsetX" in value || "offsetY" in value || "x" in value || "y" in value)
+  ) {
+    return formatShadowLayer(value);
   }
 
   if (type === "dimension" && "default" in value) {

@@ -35,6 +35,23 @@ describe("token metadata", () => {
     });
   });
 
+  it("flattens legacy description and extensions without $ prefix", () => {
+    const entries = flattenTokenEntries({
+      color: {
+        "300": {
+          description: "*Deprecated*",
+          type: "color",
+          value: "#74C76A",
+        },
+      },
+    });
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.description).toBe("*Deprecated*");
+    expect(entries[0]?.type).toBe("color");
+    expect(entries[0]?.value).toBe("#74C76A");
+  });
+
   it("writes description and extensions back to DTCG JSON", () => {
     const json = buildJsonFromMetadata({
       topLevelKeys: ["color"],

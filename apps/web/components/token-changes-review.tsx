@@ -1,6 +1,6 @@
 "use client";
 
-import { FileDiff, FolderPlus, Pencil, Trash2, X } from "lucide-react";
+import { FileDiff, FolderPlus, Braces, Pencil, Trash2, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -95,8 +95,18 @@ export function getWorkspaceChangeCount(state: {
   pendingCollectionRenames: Record<string, unknown>;
   pendingFolderRenames: Record<string, unknown>;
   pendingModeChanges: Record<string, unknown>;
+  pendingFileWrites?: Record<string, unknown>;
 }) {
-  return Object.keys(state.drafts).length + state.pendingCollectionDeletes.length + Object.keys(state.pendingCollectionCreates).length + Object.keys(state.pendingFolderCreates).length + Object.keys(state.pendingCollectionRenames).length + Object.keys(state.pendingFolderRenames).length + Object.keys(state.pendingModeChanges).length;
+  return (
+    Object.keys(state.drafts).length +
+    state.pendingCollectionDeletes.length +
+    Object.keys(state.pendingCollectionCreates).length +
+    Object.keys(state.pendingFolderCreates).length +
+    Object.keys(state.pendingCollectionRenames).length +
+    Object.keys(state.pendingFolderRenames).length +
+    Object.keys(state.pendingModeChanges).length +
+    Object.keys(state.pendingFileWrites ?? {}).length
+  );
 }
 
 export function TokenChangesReview({
@@ -123,6 +133,7 @@ export function TokenChangesReview({
   const pendingCollectionRenames = useTokenDraftStore((state) => state.pendingCollectionRenames);
   const pendingFolderRenames = useTokenDraftStore((state) => state.pendingFolderRenames);
   const pendingModeChanges = useTokenDraftStore((state) => state.pendingModeChanges);
+  const pendingFileWrites = useTokenDraftStore((state) => state.pendingFileWrites);
   const clearDraftByKey = useTokenDraftStore((state) => state.clearDraftByKey);
   const unmarkCollectionForDelete = useTokenDraftStore((state) => state.unmarkCollectionForDelete);
   const clearCollectionCreate = useTokenDraftStore((state) => state.clearCollectionCreate);
@@ -130,11 +141,29 @@ export function TokenChangesReview({
   const clearCollectionRename = useTokenDraftStore((state) => state.clearCollectionRename);
   const clearFolderRename = useTokenDraftStore((state) => state.clearFolderRename);
   const clearModeChange = useTokenDraftStore((state) => state.clearModeChange);
+  const clearJsonDocuments = useTokenDraftStore((state) => state.clearJsonDocuments);
   const clearAllDrafts = useTokenDraftStore((state) => state.clearAllDrafts);
 
   const collectionName = (id: string) => collections.find((collection) => collection.id === id)?.name ?? "Unknown collection";
   const draftEntries = Object.entries(drafts);
-  const changeCount = getWorkspaceChangeCount({ drafts, pendingCollectionDeletes, pendingCollectionCreates, pendingFolderCreates, pendingCollectionRenames, pendingFolderRenames, pendingModeChanges });
+  const fileWriteGroups = Object.values(pendingFileWrites).reduce<
+    Record<string, Array<{ path: string; content: string }>>
+  >((groups, write) => {
+    const current = groups[write.fileId] ?? [];
+    current.push({ path: write.path, content: write.content });
+    groups[write.fileId] = current;
+    return groups;
+  }, {});
+  const changeCount = getWorkspaceChangeCount({
+    drafts,
+    pendingCollectionDeletes,
+    pendingCollectionCreates,
+    pendingFolderCreates,
+    pendingCollectionRenames,
+    pendingFolderRenames,
+    pendingModeChanges,
+    pendingFileWrites,
+  });
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -183,6 +212,12 @@ export function TokenChangesReview({
             <CompactChange key={change.id} onDiscard={() => clearModeChange(change.id)}>
               <span className={change.action === "delete" ? "text-red-600" : "text-emerald-600"}>{change.action === "delete" ? "− " : "+ "}</span>
               mode {collectionName(change.fileId)}: {change.oldMode ?? change.mode}{change.newMode ? ` → ${change.newMode}` : ""}
+            </CompactChange>
+          ))}
+          {Object.entries(fileWriteGroups).map(([fileId, writes]) => (
+            <CompactChange key={`json:${fileId}`} onDiscard={() => clearJsonDocuments(fileId)}>
+              <Braces className="size-3.5 text-muted-foreground" />
+              JSON {collectionName(fileId)} ({writes.length} file{writes.length === 1 ? "" : "s"})
             </CompactChange>
           ))}
 

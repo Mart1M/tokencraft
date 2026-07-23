@@ -79,10 +79,15 @@ export function buildCollectionTree(
     const folderSegments = rawSegments.slice(0, -1);
     const fileSegment = rawSegments.at(-1) ?? collection.path;
     const nodes = ensureFolder(folderSegments.join("/"));
+    const baseLabel = humanizeSegment(fileSegment);
+    const label =
+      collection.modes.length > 1
+        ? `${baseLabel} (${collection.modes.length} modes)`
+        : baseLabel;
 
     nodes.push({
       id: collection.id,
-      label: humanizeSegment(fileSegment),
+      label,
       children: [],
       kind: "collection",
       collection,

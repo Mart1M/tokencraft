@@ -14,18 +14,26 @@ import { normalizeAliasInput } from "@/lib/tokens/json-patch";
 import {
   getCompositeFieldsForType,
   isCompositeTokenType,
+  isShadowTokenType,
 } from "@/lib/tokens/composite-fields";
 import type { TokenValueKind } from "@/lib/tokens/draft-utils";
 import {
+  createDefaultCompositeFieldValues,
   formatScalarPlaceholder,
   parseCompositionFieldValues,
   parseCompositeFieldValues,
+  parseShadowLayerValues,
   resolveStoredRawArray,
   serializeCompositionFieldValues,
   serializeCompositeFieldValues,
+  serializeShadowLayerValues,
   tryParseJsonValue,
 } from "@/lib/tokens/value-editor";
 import type { StoredTokenRawValue } from "@/lib/tokens/raw-value";
+
+function isAliasValue(value: string) {
+  return /^\{[^{}]*\}$/.test(value.trim());
+}
 
 function ColorFieldInput({
   id,
@@ -39,42 +47,33 @@ function ColorFieldInput({
   return <TokenColorPicker id={id} value={value} onChange={onChange} />;
 }
 
-function CompositeValueFields({
+function CompositeFieldInputs({
   type,
-  rawValue,
+  idPrefix,
+  fieldValues,
   aliasOptions,
-  onChange,
+  autoOpenAliasField,
+  onAutoOpenAliasField,
+  onUpdateField,
 }: {
   type: string;
-  rawValue: string;
+  idPrefix: string;
+  fieldValues: Record<string, string>;
   aliasOptions: TokenAliasOption[];
-  onChange: (value: string) => void;
+  autoOpenAliasField: string | null;
+  onAutoOpenAliasField: (field: string | null) => void;
+  onUpdateField: (key: string, nextValue: string) => void;
 }) {
   const fields = getCompositeFieldsForType(type) ?? [];
-  const [fieldValues, setFieldValues] = useState<Record<string, string>>(() =>
-    parseCompositeFieldValues(type, rawValue)
-  );
-  const [autoOpenAliasField, setAutoOpenAliasField] = useState<string | null>(null);
-
-  useEffect(() => {
-    setFieldValues(parseCompositeFieldValues(type, rawValue));
-  }, [rawValue, type]);
-
-  function updateField(key: string, nextValue: string) {
-    const next = { ...fieldValues, [key]: nextValue };
-    setFieldValues(next);
-    onChange(serializeCompositeFieldValues(type, next));
-  }
-
-  function isAliasValue(value: string) {
-    return /^\{[^{}]*\}$/.test(value.trim());
-  }
 
   return (
     <div className="space-y-3">
       {fields.map((field) => (
         <div key={field.key} className="space-y-1.5">
-          <label className="text-xs font-medium text-muted-foreground" htmlFor={`${type}-${field.key}`}>
+          <label
+            className="text-xs font-medium text-muted-foreground"
+            htmlFor={`${idPrefix}-${field.key}`}
+          >
             {field.label}
           </label>
           <div className="flex items-center gap-2">
@@ -91,20 +90,20 @@ function CompositeValueFields({
                   value={fieldValues[field.key] ?? ""}
                   defaultOpen={autoOpenAliasField === field.key}
                   onValueChange={(path) =>
-                    updateField(field.key, normalizeAliasInput(path))
+                    onUpdateField(field.key, normalizeAliasInput(path))
                   }
                 />
               ) : field.input === "color" ? (
                 <ColorFieldInput
-                  id={`${type}-${field.key}`}
+                  id={`${idPrefix}-${field.key}`}
                   value={fieldValues[field.key] ?? ""}
-                  onChange={(value) => updateField(field.key, value)}
+                  onChange={(value) => onUpdateField(field.key, value)}
                 />
               ) : (
                 <Input
-                  id={`${type}-${field.key}`}
+                  id={`${idPrefix}-${field.key}`}
                   value={fieldValues[field.key] ?? ""}
-                  onChange={(event) => updateField(field.key, event.target.value)}
+                  onChange={(event) => onUpdateField(field.key, event.target.value)}
                   placeholder={field.placeholder}
                   className="font-mono"
                 />
@@ -124,8 +123,8 @@ function CompositeValueFields({
                   }
                   onClick={() => {
                     const isAlias = isAliasValue(fieldValues[field.key] ?? "");
-                    setAutoOpenAliasField(isAlias ? null : field.key);
-                    updateField(field.key, isAlias ? "" : "{}");
+                    onAutoOpenAliasField(isAlias ? null : field.key);
+                    onUpdateField(field.key, isAlias ? "" : "{}");
                   }}
                 >
                   {isAliasValue(fieldValues[field.key] ?? "") ? (
@@ -146,6 +145,133 @@ function CompositeValueFields({
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+function CompositeValueFields({
+  type,
+  rawValue,
+  aliasOptions,
+  onChange,
+}: {
+  type: string;
+  rawValue: string;
+  aliasOptions: TokenAliasOption[];
+  onChange: (value: string) => void;
+}) {
+  const [fieldValues, setFieldValues] = useState<Record<string, string>>(() =>
+    parseCompositeFieldValues(type, rawValue)
+  );
+  const [autoOpenAliasField, setAutoOpenAliasField] = useState<string | null>(null);
+
+  useEffect(() => {
+    setFieldValues(parseCompositeFieldValues(type, rawValue));
+  }, [rawValue, type]);
+
+  function updateField(key: string, nextValue: string) {
+    const next = { ...fieldValues, [key]: nextValue };
+    setFieldValues(next);
+    onChange(serializeCompositeFieldValues(type, next));
+  }
+
+  return (
+    <CompositeFieldInputs
+      type={type}
+      idPrefix={type}
+      fieldValues={fieldValues}
+      aliasOptions={aliasOptions}
+      autoOpenAliasField={autoOpenAliasField}
+      onAutoOpenAliasField={setAutoOpenAliasField}
+      onUpdateField={updateField}
+    />
+  );
+}
+
+function ShadowLayersFields({
+  type,
+  rawValue,
+  aliasOptions,
+  onChange,
+}: {
+  type: string;
+  rawValue: string;
+  aliasOptions: TokenAliasOption[];
+  onChange: (value: string) => void;
+}) {
+  const [layers, setLayers] = useState(() => parseShadowLayerValues(type, rawValue));
+  const [autoOpenAliasField, setAutoOpenAliasField] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLayers(parseShadowLayerValues(type, rawValue));
+  }, [rawValue, type]);
+
+  function commit(next: Array<Record<string, string>>) {
+    setLayers(next);
+    onChange(serializeShadowLayerValues(type, next));
+  }
+
+  function updateLayerField(index: number, key: string, nextValue: string) {
+    commit(
+      layers.map((layer, layerIndex) =>
+        layerIndex === index ? { ...layer, [key]: nextValue } : layer,
+      ),
+    );
+  }
+
+  function addLayer() {
+    commit([...layers, createDefaultCompositeFieldValues(type)]);
+  }
+
+  function removeLayer(index: number) {
+    if (layers.length <= 1) {
+      commit([createDefaultCompositeFieldValues(type)]);
+      return;
+    }
+
+    commit(layers.filter((_, layerIndex) => layerIndex !== index));
+  }
+
+  return (
+    <div className="space-y-4">
+      {layers.map((layer, index) => (
+        <div key={`layer-${index}`} className="space-y-3 rounded-md border p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              Layer {index + 1}
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-7"
+              aria-label={`Remove layer ${index + 1}`}
+              onClick={() => removeLayer(index)}
+            >
+              <Trash2 className="size-3.5" />
+            </Button>
+          </div>
+          <CompositeFieldInputs
+            type={type}
+            idPrefix={`${type}-layer-${index}`}
+            fieldValues={layer}
+            aliasOptions={aliasOptions}
+            autoOpenAliasField={
+              autoOpenAliasField?.startsWith(`${index}:`)
+                ? autoOpenAliasField.slice(`${index}:`.length)
+                : null
+            }
+            onAutoOpenAliasField={(field) =>
+              setAutoOpenAliasField(field ? `${index}:${field}` : null)
+            }
+            onUpdateField={(key, nextValue) => updateLayerField(index, key, nextValue)}
+          />
+        </div>
+      ))}
+      <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={addLayer}>
+        <Plus className="size-3.5" />
+        Add layer
+      </Button>
     </div>
   );
 }
@@ -243,6 +369,7 @@ export function TokenValueEditor({
   valueKind,
   rawValue,
   raw,
+  mode = null,
   aliasOptions,
   onValueKindChange,
   onRawValueChange,
@@ -255,6 +382,8 @@ export function TokenValueEditor({
   valueKind: TokenValueKind;
   rawValue: string;
   raw?: StoredTokenRawValue;
+  /** Active mode when editing a multi-mode token — used to recover structured shadow raw. */
+  mode?: string | null;
   aliasOptions: TokenAliasOption[];
   onValueKindChange: (valueKind: TokenValueKind) => void;
   onRawValueChange: (rawValue: string) => void;
@@ -266,13 +395,71 @@ export function TokenValueEditor({
     () => (type && isCompositeTokenType(type) ? resolveStoredRawArray(raw) : null),
     [raw, type]
   );
-  const parsedRawValue = useMemo(() => tryParseJsonValue(rawValue), [rawValue]);
+  const effectiveRawValue = useMemo(() => {
+    if (!type || !isShadowTokenType(type) || valueKind !== "literal") {
+      return rawValue;
+    }
+
+    const parsed = tryParseJsonValue(rawValue);
+    if (
+      Array.isArray(parsed) ||
+      (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+    ) {
+      return rawValue;
+    }
+
+    // Pending value is a CSS preview string — recover layers from token.raw.
+    if (raw === undefined) {
+      return rawValue;
+    }
+
+    if (Array.isArray(raw)) {
+      return JSON.stringify(raw, null, 2);
+    }
+
+    if (raw && typeof raw === "object") {
+      const record = raw as Record<string, unknown>;
+      if (mode) {
+        const direct = record[mode];
+        if (Array.isArray(direct) || (direct && typeof direct === "object")) {
+          return JSON.stringify(direct, null, 2);
+        }
+
+        const matchedKey = Object.keys(record).find(
+          (key) => key.toLowerCase() === mode.toLowerCase(),
+        );
+        const matched = matchedKey ? record[matchedKey] : undefined;
+        if (Array.isArray(matched) || (matched && typeof matched === "object")) {
+          return JSON.stringify(matched, null, 2);
+        }
+      }
+
+      const firstArray = Object.values(record).find((value) => Array.isArray(value));
+      if (firstArray) {
+        return JSON.stringify(firstArray, null, 2);
+      }
+    }
+
+    return rawValue;
+  }, [type, valueKind, rawValue, raw, mode]);
+
+  const parsedRawValue = useMemo(
+    () => tryParseJsonValue(effectiveRawValue),
+    [effectiveRawValue],
+  );
+  const isShadowLayers =
+    Boolean(type && isShadowTokenType(type)) &&
+    valueKind === "literal" &&
+    (Boolean(compositeArray) ||
+      Array.isArray(parsedRawValue) ||
+      effectiveRawValue.trim().startsWith("["));
   const usesCompositeFields =
     Boolean(type && isCompositeTokenType(type)) &&
     valueKind === "literal" &&
-    !compositeArray &&
-    (parsedRawValue === null ||
-      (typeof parsedRawValue === "object" && !Array.isArray(parsedRawValue)));
+    !isShadowLayers &&
+    parsedRawValue !== null &&
+    typeof parsedRawValue === "object" &&
+    !Array.isArray(parsedRawValue);
 
   const [autoOpenAlias, setAutoOpenAlias] = useState(false);
 
@@ -352,11 +539,20 @@ export function TokenValueEditor({
 
   if (type === "color") {
     literalField = <ColorFieldInput id={id} value={rawValue} onChange={onRawValueChange} />;
+  } else if (isShadowLayers && type) {
+    literalField = (
+      <ShadowLayersFields
+        type={type}
+        rawValue={effectiveRawValue}
+        aliasOptions={aliasOptions}
+        onChange={onRawValueChange}
+      />
+    );
   } else if (usesCompositeFields && type) {
     literalField = (
       <CompositeValueFields
         type={type}
-        rawValue={rawValue}
+        rawValue={effectiveRawValue}
         aliasOptions={aliasOptions}
         onChange={onRawValueChange}
       />
@@ -390,12 +586,12 @@ export function TokenValueEditor({
     );
   }
 
-  const isCompositionValue = type === "composition";
+  const isCompositionValue = type === "composition" || isShadowLayers;
 
   return (
     <div className={`flex gap-2 ${isCompositionValue ? "items-start" : "items-center"}`}>
       <div className="min-w-0 flex-1">{literalField}</div>
-      {!literalDisabled && !usesCompositeFields ? (
+      {!literalDisabled && !usesCompositeFields && !isShadowLayers ? (
         <Tooltip>
           <TooltipTrigger asChild>
             <Button

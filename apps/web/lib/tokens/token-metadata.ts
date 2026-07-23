@@ -73,8 +73,13 @@ export function keyValueItemsToExtensions(
 
 export function extractDtcgTokenMetadata(record: Record<string, unknown>) {
   const description =
-    typeof record.$description === "string" ? record.$description : undefined;
-  const rawExtensions = record.$extensions;
+    typeof record.$description === "string"
+      ? record.$description
+      : typeof record.description === "string"
+        ? record.description
+        : undefined;
+  const rawExtensions =
+    record.$extensions !== undefined ? record.$extensions : record.extensions;
   let modifier: ReturnType<typeof parseTokenColorModifier>;
   if (rawExtensions && typeof rawExtensions === "object" && !Array.isArray(rawExtensions)) {
     const ext = rawExtensions as Record<string, unknown>;

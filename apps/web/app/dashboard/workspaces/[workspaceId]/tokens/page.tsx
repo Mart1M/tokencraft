@@ -51,11 +51,7 @@ function TokenExplorerPageContent() {
           workspaceName={workspace.name}
           tokens={tokens}
           settingsHref={settingsHref}
-          collections={collections.map((collection) => ({
-            id: collection.id,
-            name: collection.name,
-            path: collection.path,
-          }))}
+          collections={collections}
         />
       )}
     </DashboardLayout>

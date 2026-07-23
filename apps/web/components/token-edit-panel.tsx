@@ -798,6 +798,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
                         valueKind={pending.valueKind}
                         rawValue={pending.rawValue}
                         raw={token.raw}
+                        mode={resolveStorageMode(token, mode)}
                         aliasOptions={aliasOptions}
                         onValueKindChange={(valueKind) =>
                           setPendingEditsByMode((current) => ({
@@ -841,6 +842,7 @@ export function TokenEditPanel({ tokens }: { tokens: ImportedTokenRow[] }) {
                   valueKind={pendingEdit.valueKind}
                   rawValue={pendingEdit.rawValue}
                   raw={token.raw}
+                  mode={activeMode}
                   aliasOptions={aliasOptions}
                   onValueKindChange={(valueKind) =>
                     setPendingEdit((current) => ({ ...current, valueKind }))

@@ -85,6 +85,157 @@ describe("getEditableRawValue with a newly added mode", () => {
       rawValue: expect.stringContaining('"fontSize":"18px"'),
     });
   });
+
+  it("loads multi-layer boxShadow mode values with color aliases intact", () => {
+    const token: ImportedTokenRow = {
+      id: "core:shadow.focus",
+      fileId: "core",
+      sourcePath: "tokens/core.json",
+      collectionName: "core",
+      name: "shadow.focus",
+      type: "boxShadow",
+      value: "0 0 0 4 {vp.core.color.white}, 0 0 0 6 {vp.core.color.black}",
+      raw: {
+        light: [
+          {
+            blur: "0",
+            color: "{vp.core.color.white}",
+            spread: "4",
+            type: "dropShadow",
+            x: "0",
+            y: "0",
+          },
+        ],
+        dark: [
+          {
+            blur: "0",
+            color: "{vp.core.color.black}",
+            spread: "4",
+            type: "dropShadow",
+            x: "0",
+            y: "0",
+          },
+        ],
+      },
+      modes: {
+        light: {
+          kind: "composite",
+          text: "0 0 0 4 {vp.core.color.white}",
+        },
+        dark: {
+          kind: "composite",
+          text: "0 0 0 4 {vp.core.color.black}",
+        },
+      },
+    };
+
+    const editable = getEditableRawValue(token, "dark");
+
+    expect(editable.valueKind).toBe("literal");
+    expect(editable.rawValue).toContain("{vp.core.color.black}");
+    expect(editable.rawValue).not.toContain("#000000");
+    expect(JSON.parse(editable.rawValue)).toEqual([
+      {
+        blur: "0",
+        color: "{vp.core.color.black}",
+        spread: "4",
+        type: "dropShadow",
+        x: "0",
+        y: "0",
+      },
+    ]);
+  });
+
+  it("resolves boxShadow layers from raw mode map even without token.modes", () => {
+    const token: ImportedTokenRow = {
+      id: "core:shadow.focus",
+      fileId: "core",
+      sourcePath: "tokens/core.json",
+      collectionName: "core",
+      name: "shadow.focus",
+      type: "boxShadow",
+      value: "0 0 0 4 {vp.core.color.white}",
+      display: {
+        kind: "composite",
+        text: "0 0 0 4 {vp.core.color.white}",
+      },
+      raw: {
+        light: [
+          {
+            blur: "0",
+            color: "{vp.core.color.white}",
+            spread: "4",
+            type: "dropShadow",
+            x: "0",
+            y: "0",
+          },
+        ],
+        dark: [
+          {
+            blur: "0",
+            color: "{vp.core.color.black}",
+            spread: "4",
+            type: "dropShadow",
+            x: "0",
+            y: "0",
+          },
+        ],
+      },
+    };
+
+    const editable = getEditableRawValue(token, "Light");
+
+    expect(JSON.parse(editable.rawValue)).toEqual([
+      {
+        blur: "0",
+        color: "{vp.core.color.white}",
+        spread: "4",
+        type: "dropShadow",
+        x: "0",
+        y: "0",
+      },
+    ]);
+  });
+});
+
+describe("buildStoredTokenEntry with boxShadow mode maps", () => {
+  it("keeps array mode values as modes instead of a flat composite", async () => {
+    const { buildStoredTokenEntry } = await import("@/lib/tokens/display");
+
+    const entry = buildStoredTokenEntry("shadow.focus", "boxShadow", {
+      light: [
+        {
+          blur: "0",
+          color: "{vp.core.color.white}",
+          spread: "4",
+          type: "dropShadow",
+          x: "0",
+          y: "0",
+        },
+      ],
+      dark: [
+        {
+          blur: "0",
+          color: "{vp.core.color.black}",
+          spread: "4",
+          type: "dropShadow",
+          x: "0",
+          y: "0",
+        },
+      ],
+    });
+
+    expect("modes" in entry && entry.modes?.light?.text).toContain(
+      "{vp.core.color.white}",
+    );
+    expect("modes" in entry && entry.modes?.dark?.text).toContain(
+      "{vp.core.color.black}",
+    );
+    expect(entry.raw).toMatchObject({
+      light: [expect.objectContaining({ color: "{vp.core.color.white}" })],
+      dark: [expect.objectContaining({ color: "{vp.core.color.black}" })],
+    });
+  });
 });
 
 describe("applyDraftToRow with a newly added mode", () => {

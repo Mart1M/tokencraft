@@ -90,6 +90,10 @@ Choose this when opening a folder for the first time (Create workspace dialog). 
 
 Each mode file stores scalar token values (not mode maps). TokenCraft merges them into one collection in the UI.
 
+### Auto-detection
+
+With `modeStorage: "separate-files"`, TokenCraft also detects sibling files that share enough token paths (for example `semantic/legacy/light.json` + `semantic/legacy/dark.json`) and merges them into one collection even when `collections` is not listed in the config. Mode names come from the file basenames; the collection name comes from the parent folder.
+
 ## Legacy `sources` format
 
 TokenCraft also accepts a `sources` array with `path` entries, for compatibility with other tools:

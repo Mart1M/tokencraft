@@ -85,6 +85,42 @@ describe("composite token display", () => {
     );
   });
 
+  it("renders Tokens Studio boxShadow arrays with aliases", () => {
+    const display = buildTokenDisplayValue(
+      [
+        {
+          blur: "0",
+          color: "{vp.core.color.white}",
+          spread: "4",
+          type: "dropShadow",
+          x: "0",
+          y: "0",
+        },
+        {
+          blur: "0",
+          color: "{vp.core.color.black}",
+          spread: "6",
+          type: "dropShadow",
+          x: "0",
+          y: "0",
+        },
+      ],
+      "boxShadow"
+    );
+
+    expect(display.kind).toBe("composite");
+    expect(display.text).toBe(
+      "0 0 0 4 {vp.core.color.white}, 0 0 0 6 {vp.core.color.black}",
+    );
+    expect(display.parts).toEqual(
+      expect.arrayContaining([
+        { kind: "alias", text: "{vp.core.color.white}", aliasPath: "vp.core.color.white" },
+        { kind: "alias", text: "{vp.core.color.black}", aliasPath: "vp.core.color.black" },
+        { kind: "text", text: ", " },
+      ]),
+    );
+  });
+
   it("renders typography values with alias tags", () => {
     const display = buildTokenDisplayValue(
       {

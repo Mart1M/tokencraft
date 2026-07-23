@@ -32,4 +32,30 @@ describe("buildCollectionTree", () => {
       },
     ]);
   });
+
+  it("renders multi-mode sibling files as a single collection leaf", () => {
+    const tree = buildCollectionTree([
+      {
+        id: "legacy",
+        name: "semantic / legacy",
+        modes: ["light", "dark"],
+        path: "semantic/legacy",
+      },
+    ]);
+
+    expect(tree).toMatchObject([
+      {
+        id: "semantic",
+        kind: "folder",
+        label: "semantic",
+        children: [
+          {
+            id: "legacy",
+            kind: "collection",
+            label: "legacy (2 modes)",
+          },
+        ],
+      },
+    ]);
+  });
 });

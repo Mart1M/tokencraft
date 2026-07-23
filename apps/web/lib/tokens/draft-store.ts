@@ -4,6 +4,7 @@ import { create } from "zustand";
 
 import type { TokenDraft } from "@/lib/tokens/draft-utils";
 import { getDraftKey } from "@/lib/tokens/draft-utils";
+import type { ImportedTokenRow } from "@/lib/tokens/entries";
 
 type TokenPanelEditScope = "all" | "single";
 
@@ -30,6 +31,12 @@ export type PendingModeChange = {
   modes: string[];
 };
 
+export type PendingFileWrite = {
+  path: string;
+  content: string;
+  fileId: string;
+};
+
 type TokenDraftStore = {
   selectedTokenId: string | null;
   isPanelOpen: boolean;
@@ -44,6 +51,8 @@ type TokenDraftStore = {
   pendingCollectionRenames: Record<string, PendingPathRename>;
   pendingFolderRenames: Record<string, PendingPathRename>;
   pendingModeChanges: Record<string, PendingModeChange>;
+  pendingFileWrites: Record<string, PendingFileWrite>;
+  jsonOverrides: Record<string, ImportedTokenRow[]>;
   openToken: (tokenId: string) => void;
   openTokenForMode: (tokenId: string, mode: string) => void;
   openCreateToken: (context: {
@@ -70,6 +79,12 @@ type TokenDraftStore = {
   clearFolderRename: (id: string) => void;
   stageModeChange: (change: Omit<PendingModeChange, "id">) => void;
   clearModeChange: (id: string) => void;
+  stageJsonDocuments: (input: {
+    fileId: string;
+    tokens: ImportedTokenRow[];
+    documents: Array<{ path: string; content: string }>;
+  }) => void;
+  clearJsonDocuments: (fileId: string) => void;
   reset: () => void;
   hasLocalEdits: () => boolean;
 };
@@ -88,6 +103,8 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
   pendingCollectionRenames: {},
   pendingFolderRenames: {},
   pendingModeChanges: {},
+  pendingFileWrites: {},
+  jsonOverrides: {},
   openToken: (tokenId) =>
     set({
       selectedTokenId: tokenId,
@@ -188,6 +205,8 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
         pendingCollectionRenames: {},
         pendingFolderRenames: {},
         pendingModeChanges: {},
+        pendingFileWrites: {},
+        jsonOverrides: {},
         ...(discardedSelectedCreatedToken
           ? { selectedTokenId: null, isPanelOpen: false }
           : {}),
@@ -303,6 +322,50 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
       delete pendingModeChanges[id];
       return { pendingModeChanges };
     }),
+  stageJsonDocuments: ({ fileId, tokens, documents }) =>
+    set((state) => {
+      const nextDrafts = { ...state.drafts };
+      for (const [key, draft] of Object.entries(nextDrafts)) {
+        if (draft.fileId === fileId) {
+          delete nextDrafts[key];
+        }
+      }
+
+      const pendingFileWrites = { ...state.pendingFileWrites };
+      for (const [path, write] of Object.entries(pendingFileWrites)) {
+        if (write.fileId === fileId) {
+          delete pendingFileWrites[path];
+        }
+      }
+      for (const document of documents) {
+        pendingFileWrites[document.path] = {
+          path: document.path,
+          content: document.content,
+          fileId,
+        };
+      }
+
+      return {
+        drafts: nextDrafts,
+        pendingFileWrites,
+        jsonOverrides: {
+          ...state.jsonOverrides,
+          [fileId]: tokens,
+        },
+      };
+    }),
+  clearJsonDocuments: (fileId) =>
+    set((state) => {
+      const pendingFileWrites = { ...state.pendingFileWrites };
+      for (const [path, write] of Object.entries(pendingFileWrites)) {
+        if (write.fileId === fileId) {
+          delete pendingFileWrites[path];
+        }
+      }
+      const jsonOverrides = { ...state.jsonOverrides };
+      delete jsonOverrides[fileId];
+      return { pendingFileWrites, jsonOverrides };
+    }),
   reset: () =>
     set({
       drafts: {},
@@ -312,6 +375,8 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
       pendingCollectionRenames: {},
       pendingFolderRenames: {},
       pendingModeChanges: {},
+      pendingFileWrites: {},
+      jsonOverrides: {},
       selectedTokenId: null,
       isPanelOpen: false,
       panelMode: "edit",
@@ -328,6 +393,7 @@ export const useTokenDraftStore = create<TokenDraftStore>((set, get) => ({
       || Object.keys(state.pendingCollectionRenames).length > 0
       || Object.keys(state.pendingFolderRenames).length > 0
       || Object.keys(state.pendingModeChanges).length > 0
+      || Object.keys(state.pendingFileWrites).length > 0
     );
   },
 }));

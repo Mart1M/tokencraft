@@ -3,7 +3,11 @@ import {
   getDraftsForToken,
   type TokenDraft,
 } from "@/lib/tokens/draft-utils";
-import { resolveModeKey, type TokenDisplayValue } from "@/lib/tokens/display";
+import {
+  getRowModeDisplayValue,
+  resolveModeKey,
+  type TokenDisplayValue,
+} from "@/lib/tokens/display";
 import type { ImportedTokenRow } from "@/lib/tokens/entries";
 
 // Keep this in sync with the display alias matcher: JSON composite values use
@@ -21,6 +25,13 @@ export type TokenDependencyGraph = {
   outgoing: TokenDependency[];
   incoming: TokenDependency[];
   cycle: string[] | null;
+};
+
+export type AliasChainStep = {
+  path: string;
+  valueText: string | null;
+  missing: boolean;
+  isAlias: boolean;
 };
 
 export function extractTokenReferences(value: unknown): string[] {
@@ -190,4 +201,89 @@ export function getTokenDependencyGraph(
   );
 
   return { outgoing, incoming, cycle: findCycle(effectiveToken, rows, mode) };
+}
+
+function nextAliasPath(display: TokenDisplayValue | null, fallbackText?: string) {
+  if (display?.kind === "alias" && display.aliasPath) {
+    return display.aliasPath;
+  }
+
+  const text = display?.text ?? fallbackText;
+  if (!text) {
+    return null;
+  }
+
+  const match = text.trim().match(/^\{([\w./-]+)\}$/);
+  return match?.[1] ?? null;
+}
+
+/**
+ * Follow `{alias}` references from a starting path until a literal value,
+ * a missing token, or a cycle is reached.
+ */
+export function resolveAliasChain(
+  startPath: string,
+  rows: ImportedTokenRow[],
+  mode: string | null,
+  options?: { maxDepth?: number; sourceFileId?: string },
+): AliasChainStep[] {
+  const maxDepth = options?.maxDepth ?? 20;
+  const steps: AliasChainStep[] = [];
+  const visited = new Set<string>();
+  let currentPath = startPath.trim();
+
+  while (currentPath && steps.length < maxDepth) {
+    if (visited.has(currentPath)) {
+      steps.push({
+        path: currentPath,
+        valueText: null,
+        missing: false,
+        isAlias: true,
+      });
+      break;
+    }
+
+    visited.add(currentPath);
+
+    const candidates = rows.filter((row) => row.name === currentPath);
+    const token =
+      (options?.sourceFileId
+        ? candidates.find((candidate) => candidate.fileId === options.sourceFileId)
+        : undefined) ?? candidates[0];
+
+    if (!token) {
+      steps.push({
+        path: currentPath,
+        valueText: null,
+        missing: true,
+        isAlias: false,
+      });
+      break;
+    }
+
+    const display = getRowModeDisplayValue(token, mode ?? "Default");
+    const valueText = display?.text ?? token.value ?? null;
+    const aliasPath = nextAliasPath(display, valueText ?? undefined);
+
+    if (aliasPath) {
+      steps.push({
+        path: currentPath,
+        valueText: valueText,
+        missing: false,
+        isAlias: true,
+      });
+      currentPath = aliasPath;
+      continue;
+    }
+
+    steps.push({
+      path: currentPath,
+      valueText,
+      missing: false,
+      isAlias: false,
+    });
+    break;
+  }
+
+  return steps;
 }

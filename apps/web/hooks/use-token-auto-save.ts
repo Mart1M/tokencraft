@@ -20,6 +20,7 @@ export function useTokenAutoSave() {
   const pendingCollectionRenames = useTokenDraftStore((state) => state.pendingCollectionRenames);
   const pendingFolderRenames = useTokenDraftStore((state) => state.pendingFolderRenames);
   const pendingModeChanges = useTokenDraftStore((state) => state.pendingModeChanges);
+  const pendingFileWrites = useTokenDraftStore((state) => state.pendingFileWrites);
 
   const [status, setStatus] = useState<TokenAutoSaveStatus>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +31,8 @@ export function useTokenAutoSave() {
     Object.keys(pendingFolderCreates).length > 0 ||
     Object.keys(pendingCollectionRenames).length > 0 ||
     Object.keys(pendingFolderRenames).length > 0 ||
-    Object.keys(pendingModeChanges).length > 0;
+    Object.keys(pendingModeChanges).length > 0 ||
+    Object.keys(pendingFileWrites).length > 0;
 
   useEffect(() => {
     if (hasLocalEdits && status === "saved") {
@@ -59,6 +61,10 @@ export function useTokenAutoSave() {
           collectionRenames: Object.values(current.pendingCollectionRenames),
           folderRenames: Object.values(current.pendingFolderRenames),
           modeChanges: Object.values(current.pendingModeChanges),
+          fileWrites: Object.values(current.pendingFileWrites).map(({ path, content }) => ({
+            path,
+            content,
+          })),
         }),
       });
       const payload = await response.json().catch(() => ({}));

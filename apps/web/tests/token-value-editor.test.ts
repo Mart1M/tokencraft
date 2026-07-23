@@ -6,8 +6,10 @@ import {
   compositeFieldValuesToObject,
   getDefaultLiteralValueForType,
   parseCompositionFieldValues,
+  parseShadowLayerValues,
   serializeCompositionFieldValues,
   serializeCompositeFieldValues,
+  serializeShadowLayerValues,
 } from "@/lib/tokens/value-editor";
 
 describe("composite token value editor", () => {
@@ -69,5 +71,36 @@ describe("composite token value editor", () => {
     expect(JSON.parse(serializeCompositionFieldValues(fields))).toEqual({
       typography: "{vp.semantic.typography.mobile.body-m}",
     });
+  });
+
+  it("parses Tokens Studio boxShadow layers and keeps color aliases", () => {
+    const layers = parseShadowLayerValues(
+      "boxShadow",
+      JSON.stringify([
+        {
+          blur: "0",
+          color: "{vp.core.color.black}",
+          spread: "4",
+          type: "dropShadow",
+          x: "0",
+          y: "0",
+        },
+      ]),
+    );
+
+    expect(layers[0]?.color).toBe("{vp.core.color.black}");
+    expect(layers[0]?.offsetX).toBe("0");
+    expect(layers[0]?.offsetY).toBe("0");
+
+    expect(JSON.parse(serializeShadowLayerValues("boxShadow", layers))).toEqual([
+      {
+        x: "0",
+        y: "0",
+        blur: "0",
+        spread: "4",
+        color: "{vp.core.color.black}",
+        type: "dropShadow",
+      },
+    ]);
   });
 });

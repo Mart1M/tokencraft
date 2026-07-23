@@ -267,11 +267,20 @@ export function applyTokenMetadataToLeaf(
 
   const record = leaf as Record<string, unknown>;
   const description = metadata.description?.trim();
+  const usesLegacyDescription =
+    typeof record.description === "string" && typeof record.$description !== "string";
 
   if (description) {
-    record.$description = description;
+    if (usesLegacyDescription) {
+      record.description = description;
+      delete record.$description;
+    } else {
+      record.$description = description;
+      delete record.description;
+    }
   } else {
     delete record.$description;
+    delete record.description;
   }
 
   const extensions = { ...(metadata.extensions ?? {}) } as Record<string, unknown>;
@@ -284,10 +293,20 @@ export function applyTokenMetadataToLeaf(
     };
   }
 
+  const usesLegacyExtensions =
+    record.extensions !== undefined && record.$extensions === undefined;
+
   if (Object.keys(extensions).length > 0) {
-    record.$extensions = extensions;
+    if (usesLegacyExtensions) {
+      record.extensions = extensions;
+      delete record.$extensions;
+    } else {
+      record.$extensions = extensions;
+      delete record.extensions;
+    }
   } else {
     delete record.$extensions;
+    delete record.extensions;
   }
 
   return root;

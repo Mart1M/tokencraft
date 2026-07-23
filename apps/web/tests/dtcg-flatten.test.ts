@@ -48,6 +48,32 @@ describe("formatDtcgTokenValue", () => {
       )
     ).toBe("0px 1px 2px 0px rgba(15, 23, 42, 0.12)");
   });
+
+  it("formats Tokens Studio boxShadow layers", () => {
+    expect(
+      formatDtcgTokenValue(
+        [
+          {
+            blur: "0",
+            color: "{vp.core.color.white}",
+            spread: "4",
+            type: "dropShadow",
+            x: "0",
+            y: "0",
+          },
+          {
+            blur: "0",
+            color: "{vp.core.color.black}",
+            spread: "6",
+            type: "dropShadow",
+            x: "0",
+            y: "0",
+          },
+        ],
+        "boxShadow"
+      )
+    ).toBe("0 0 0 4 {vp.core.color.white}, 0 0 0 6 {vp.core.color.black}");
+  });
 });
 
 describe("flattenTokenEntries", () => {
@@ -92,7 +118,7 @@ describe("flattenTokenEntries", () => {
       expect.objectContaining({
         path: "shadow.md",
         type: "shadow",
-        value: "2 layers",
+        value: "0px 4px 8px 0px rgba(15, 23, 42, 0.10), 0px 2px 4px 0px rgba(15, 23, 42, 0.06)",
       })
     );
     expect(tokens).toContainEqual(

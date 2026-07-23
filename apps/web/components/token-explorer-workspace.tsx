@@ -1,8 +1,12 @@
 "use client";
 
 import { ChevronRight, Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import {
+  CollectionJsonButton,
+  CollectionJsonSheet,
+} from "@/components/collection-json-sheet";
 import { DashboardPageHeader } from "@/components/dashboard-page-header";
 import { TokenEditPanel } from "@/components/token-edit-panel";
 import { getWorkspaceChangeCount, TokenChangesReview } from "@/components/token-changes-review";
@@ -10,8 +14,10 @@ import { useTokenExplorer } from "@/components/token-explorer-provider";
 import { TokensCollectionsEmptyState } from "@/components/tokens-collections-empty-state";
 import { TokensExplorerTable } from "@/components/tokens-explorer-table";
 import { Button } from "@/components/ui/button";
+import { useWorkspaceData } from "@/components/workspace-data-provider";
 import { useTokenAutoSave } from "@/hooks/use-token-auto-save";
-import type { ImportedTokenRow } from "@/lib/tokens/entries";
+import { applyJsonTokenOverrides } from "@/lib/tokens/collection-json-preview";
+import type { ImportedTokenRow, TokenSidebarCollection } from "@/lib/tokens/entries";
 import { cn } from "@/lib/utils";
 import { useTokenDraftStore } from "@/lib/tokens/draft-store";
 
@@ -46,7 +52,7 @@ export function TokenExplorerWorkspace({
   workspaceName: string;
   tokens: ImportedTokenRow[];
   settingsHref: string;
-  collections: Array<{ id: string; name: string; path: string }>;
+  collections: TokenSidebarCollection[];
 }) {
   const isPanelOpen = useTokenDraftStore((state) => state.isPanelOpen);
   const openCreateToken = useTokenDraftStore((state) => state.openCreateToken);
@@ -59,10 +65,19 @@ export function TokenExplorerWorkspace({
   const pendingCollectionRenames = useTokenDraftStore((state) => state.pendingCollectionRenames);
   const pendingFolderRenames = useTokenDraftStore((state) => state.pendingFolderRenames);
   const pendingModeChanges = useTokenDraftStore((state) => state.pendingModeChanges);
+  const pendingFileWrites = useTokenDraftStore((state) => state.pendingFileWrites);
+  const jsonOverrides = useTokenDraftStore((state) => state.jsonOverrides);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [jsonOpen, setJsonOpen] = useState(false);
+  const { workspace } = useWorkspaceData();
   const { selectedCollectionId, selectedGroupSegments } = useTokenExplorer();
   const { status, error, hasLocalEdits, save } = useTokenAutoSave();
   const hasCollections = collections.length > 0;
+
+  const effectiveTokens = useMemo(
+    () => applyJsonTokenOverrides(tokens, jsonOverrides),
+    [tokens, jsonOverrides],
+  );
 
   const selectedCollection = collections.find(
     (collection) => collection.id === selectedCollectionId,
@@ -70,6 +85,7 @@ export function TokenExplorerWorkspace({
   const canAddToken = Boolean(
     selectedCollection && !pendingCollectionDeletes.includes(selectedCollection.id),
   );
+  const canViewJson = Boolean(selectedCollection && workspace?.rootPath);
   const viewSegments =
     selectedGroupSegments === null
       ? ["All tokens"]
@@ -110,6 +126,7 @@ export function TokenExplorerWorkspace({
     pendingCollectionRenames,
     pendingFolderRenames,
     pendingModeChanges,
+    pendingFileWrites,
   });
 
   useEffect(() => {
@@ -165,6 +182,10 @@ export function TokenExplorerWorkspace({
                     {changeCount}
                   </Button>
                 </div>
+                <CollectionJsonButton
+                  disabled={!canViewJson}
+                  onClick={() => setJsonOpen(true)}
+                />
                 {canAddToken ? (
                   <Button
                     type="button"
@@ -187,21 +208,31 @@ export function TokenExplorerWorkspace({
           />
         </div>
         {hasCollections ? (
-          <TokensExplorerTable tokens={tokens} />
+          <TokensExplorerTable tokens={effectiveTokens} />
         ) : (
           <TokensCollectionsEmptyState settingsHref={settingsHref} />
         )}
       </div>
-      <TokenEditPanel tokens={tokens} />
+      <TokenEditPanel tokens={effectiveTokens} />
       <TokenChangesReview
         open={reviewOpen}
         onOpenChange={setReviewOpen}
-        tokens={tokens}
+        tokens={effectiveTokens}
         collections={collections}
         status={status}
         error={error}
         onSave={handleSave}
       />
+      {workspace ? (
+        <CollectionJsonSheet
+          open={jsonOpen}
+          onOpenChange={setJsonOpen}
+          rootPath={workspace.rootPath}
+          fileId={selectedCollection?.id ?? null}
+          collectionName={selectedCollection?.name}
+          sourcePath={selectedCollection?.path}
+        />
+      ) : null}
     </>
   );
 }

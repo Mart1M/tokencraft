@@ -1,5 +1,5 @@
-import { formatDtcgTokenValue } from "@/lib/tokens/dtcg-format";
-import { getCompositeFieldKeys } from "@/lib/tokens/composite-fields";
+import { formatDtcgTokenValue, formatShadowLayer } from "@/lib/tokens/dtcg-format";
+import { getCompositeFieldKeys, isShadowTokenType } from "@/lib/tokens/composite-fields";
 import { toStoredTokenRawValue } from "@/lib/tokens/raw-value";
 
 export type TokenDisplayPart =
@@ -35,6 +35,7 @@ const COMPOSITE_FIELD_ORDER: Record<string, string[]> = {
   typography: getCompositeFieldKeys("typography"),
   transition: getCompositeFieldKeys("transition"),
   shadow: getCompositeFieldKeys("shadow"),
+  boxShadow: getCompositeFieldKeys("shadow"),
   asset: getCompositeFieldKeys("asset"),
   strokeStyle: getCompositeFieldKeys("strokeStyle"),
   composition: [],
@@ -111,7 +112,8 @@ export function looksLikeModeMap(value: Record<string, unknown>, type?: string) 
       typeof modeValue === "string" ||
       typeof modeValue === "number" ||
       typeof modeValue === "boolean" ||
-      (typeof modeValue === "object" && modeValue !== null && !Array.isArray(modeValue))
+      // Objects and arrays are valid mode payloads (e.g. boxShadow layer lists).
+      (typeof modeValue === "object" && modeValue !== null)
     );
   });
 }
@@ -297,6 +299,31 @@ export function parseStringIntoComposite(text: string): TokenDisplayValue {
   return { kind: "composite", text, parts };
 }
 
+function normalizeShadowLayer(raw: Record<string, unknown>): Record<string, unknown> {
+  const normalized: Record<string, unknown> = {};
+
+  if (raw.offsetX !== undefined || raw.x !== undefined) {
+    normalized.offsetX = raw.offsetX ?? raw.x;
+  }
+  if (raw.offsetY !== undefined || raw.y !== undefined) {
+    normalized.offsetY = raw.offsetY ?? raw.y;
+  }
+  if (raw.blur !== undefined) {
+    normalized.blur = raw.blur;
+  }
+  if (raw.spread !== undefined) {
+    normalized.spread = raw.spread;
+  }
+  if (raw.color !== undefined) {
+    normalized.color = raw.color;
+  }
+  if (raw.inset === true || raw.inset === "true" || raw.type === "innerShadow") {
+    normalized.inset = "true";
+  }
+
+  return normalized;
+}
+
 function buildCompositeDisplay(
   raw: Record<string, unknown>,
   type?: string
@@ -305,8 +332,10 @@ function buildCompositeDisplay(
     return null;
   }
 
+  const displayType = isShadowTokenType(type) ? "shadow" : type;
+  const source = isShadowTokenType(type) ? normalizeShadowLayer(raw) : raw;
   const orderedKeys =
-    type === "composition" ? Object.keys(raw) : COMPOSITE_FIELD_ORDER[type];
+    displayType === "composition" ? Object.keys(source) : COMPOSITE_FIELD_ORDER[displayType];
 
   if (!orderedKeys) {
     return null;
@@ -315,7 +344,7 @@ function buildCompositeDisplay(
   const parts: TokenDisplayPart[] = [];
 
   for (const key of orderedKeys) {
-    if (raw[key] === undefined || raw[key] === null) {
+    if (source[key] === undefined || source[key] === null) {
       continue;
     }
 
@@ -323,20 +352,22 @@ function buildCompositeDisplay(
       parts.push({ kind: "text", text: " " });
     }
 
-    if (type === "typography" || type === "composition") {
+    if (displayType === "typography" || displayType === "composition") {
       parts.push({ kind: "text", text: `${key}: ` });
     }
 
     parts.push(
       buildPartFromRaw(
-        raw[key],
-        (type === "border" || type === "shadow") && key === "color" ? "color" : undefined
+        source[key],
+        (displayType === "border" || displayType === "shadow") && key === "color"
+          ? "color"
+          : undefined
       )
     );
   }
 
-  for (const key of Object.keys(raw)) {
-    if (orderedKeys.includes(key) || raw[key] === undefined || raw[key] === null) {
+  for (const key of Object.keys(source)) {
+    if (orderedKeys.includes(key) || source[key] === undefined || source[key] === null) {
       continue;
     }
 
@@ -344,7 +375,7 @@ function buildCompositeDisplay(
       parts.push({ kind: "text", text: " " });
     }
 
-    parts.push(buildPartFromRaw(raw[key], key === "color" ? "color" : undefined));
+    parts.push(buildPartFromRaw(source[key], key === "color" ? "color" : undefined));
   }
 
   if (parts.length === 0) {
@@ -358,8 +389,56 @@ function buildCompositeDisplay(
   };
 }
 
+function buildShadowLayersDisplay(layers: unknown[], type?: string): TokenDisplayValue {
+  const parts: TokenDisplayPart[] = [];
+
+  for (let index = 0; index < layers.length; index += 1) {
+    const layer = layers[index];
+    if (!layer || typeof layer !== "object" || Array.isArray(layer)) {
+      continue;
+    }
+
+    if (parts.length > 0) {
+      parts.push({ kind: "text", text: ", " });
+    }
+
+    const layerDisplay = buildCompositeDisplay(layer as Record<string, unknown>, type);
+    if (layerDisplay?.parts?.length) {
+      parts.push(...layerDisplay.parts);
+    } else {
+      parts.push({
+        kind: "text",
+        text: formatShadowLayer(layer as Record<string, unknown>),
+      });
+    }
+  }
+
+  if (parts.length === 0) {
+    return { kind: "text", text: formatDtcgTokenValue(layers, type) };
+  }
+
+  return {
+    kind: "composite",
+    text: formatDtcgTokenValue(layers, type),
+    parts,
+  };
+}
+
 export function buildTokenDisplayValue(raw: unknown, type?: string): TokenDisplayValue {
   if (typeof raw === "string") {
+    const trimmed = raw.trim();
+
+    if (
+      isShadowTokenType(type) &&
+      (trimmed.startsWith("{") || trimmed.startsWith("["))
+    ) {
+      try {
+        return buildTokenDisplayValue(JSON.parse(trimmed) as unknown, type);
+      } catch {
+        // Fall through to string display.
+      }
+    }
+
     const aliasMatch = raw.match(ALIAS_PATTERN);
 
     if (aliasMatch) {
@@ -387,7 +466,15 @@ export function buildTokenDisplayValue(raw: unknown, type?: string): TokenDispla
     return { kind: "text", text: String(raw) };
   }
 
-  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+  if (Array.isArray(raw)) {
+    if (isShadowTokenType(type)) {
+      return buildShadowLayersDisplay(raw, type);
+    }
+
+    return { kind: "text", text: formatDtcgTokenValue(raw, type) };
+  }
+
+  if (raw && typeof raw === "object") {
     const composite = buildCompositeDisplay(raw as Record<string, unknown>, type);
 
     if (composite) {

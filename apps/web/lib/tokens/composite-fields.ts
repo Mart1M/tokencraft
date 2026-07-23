@@ -52,13 +52,21 @@ export function getCompositeFieldsForType(type?: string) {
     return null;
   }
 
+  if (type === "boxShadow") {
+    return TOKEN_COMPOSITE_FIELDS.shadow;
+  }
+
   return TOKEN_COMPOSITE_FIELDS[type] ?? null;
 }
 
 export function getCompositeFieldKeys(type: string) {
-  return TOKEN_COMPOSITE_FIELDS[type]?.map((field) => field.key) ?? [];
+  return getCompositeFieldsForType(type)?.map((field) => field.key) ?? [];
+}
+
+export function isShadowTokenType(type?: string) {
+  return type === "shadow" || type === "boxShadow";
 }
 
 export function isCompositeTokenType(type?: string) {
-  return Boolean(type && TOKEN_COMPOSITE_FIELDS[type]);
+  return Boolean(type && getCompositeFieldsForType(type));
 }

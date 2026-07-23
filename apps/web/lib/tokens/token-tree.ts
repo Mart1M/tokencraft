@@ -8,9 +8,9 @@ export type TokenTreeNode = {
   tokenCount: number;
 };
 
-/** Splits a token path into segments on both "." (nesting) and "-" (kebab-case names). */
+/** Splits a token path into segments on "." only — mirrors JSON object nesting. */
 export function splitTokenPath(name: string): string[] {
-  return name.split(/[.-]+/).filter(Boolean);
+  return name.split(".").filter(Boolean);
 }
 
 /** The group segments a token belongs to — every path segment except the leaf token name. */
@@ -73,4 +73,36 @@ export function tokenMatchesGroup(token: ImportedTokenRow, groupSegments: string
   }
 
   return groupSegments.every((segment, index) => tokenSegments[index] === segment);
+}
+
+/** Case-insensitive match on token path, value, or description. */
+export function tokenMatchesSearch(token: ImportedTokenRow, query: string): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  if (token.name.toLowerCase().includes(normalized)) {
+    return true;
+  }
+
+  if (token.value.toLowerCase().includes(normalized)) {
+    return true;
+  }
+
+  if (token.description?.toLowerCase().includes(normalized)) {
+    return true;
+  }
+
+  if (token.display?.text.toLowerCase().includes(normalized)) {
+    return true;
+  }
+
+  if (token.modes) {
+    return Object.values(token.modes).some((display) =>
+      display.text.toLowerCase().includes(normalized),
+    );
+  }
+
+  return false;
 }

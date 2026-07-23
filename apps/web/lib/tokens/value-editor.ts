@@ -85,11 +85,23 @@ export function objectToCompositeFieldValues(
   type: string,
   value: Record<string, unknown>
 ) {
+  const source =
+    type === "shadow" || type === "boxShadow"
+      ? {
+          ...value,
+          ...(value.offsetX === undefined && value.x !== undefined
+            ? { offsetX: value.x }
+            : {}),
+          ...(value.offsetY === undefined && value.y !== undefined
+            ? { offsetY: value.y }
+            : {}),
+        }
+      : value;
   const fields = getCompositeFieldsForType(type) ?? [];
   const values: Record<string, string> = {};
 
   for (const field of fields) {
-    const raw = value[field.key];
+    const raw = source[field.key];
 
     if (raw === undefined || raw === null) {
       values[field.key] = "";
@@ -99,8 +111,8 @@ export function objectToCompositeFieldValues(
     values[field.key] = typeof raw === "string" ? raw : String(raw);
   }
 
-  for (const [key, raw] of Object.entries(value)) {
-    if (fields.some((field) => field.key === key)) {
+  for (const [key, raw] of Object.entries(source)) {
+    if (fields.some((field) => field.key === key) || key === "x" || key === "y" || key === "type") {
       continue;
     }
 
@@ -173,6 +185,73 @@ export function parseCompositeFieldValues(type: string, rawValue: string) {
   }
 
   return createDefaultCompositeFieldValues(type);
+}
+
+/** Tokens Studio boxShadow layers use x/y + type; DTCG uses offsetX/offsetY. */
+export function serializeShadowLayerObject(
+  type: string,
+  values: Record<string, string>,
+) {
+  const object = compositeFieldValuesToObject(type, values);
+
+  if (type !== "boxShadow") {
+    return object;
+  }
+
+  const next: Record<string, string> = {};
+  const inset = object.inset === "true";
+
+  if (object.offsetX !== undefined) next.x = object.offsetX;
+  if (object.offsetY !== undefined) next.y = object.offsetY;
+  if (object.blur !== undefined) next.blur = object.blur;
+  if (object.spread !== undefined) next.spread = object.spread;
+  if (object.color !== undefined) next.color = object.color;
+  next.type = inset ? "innerShadow" : "dropShadow";
+
+  return next;
+}
+
+export function parseShadowLayerValues(type: string, rawValue: string) {
+  const trimmed = rawValue.trim();
+
+  if (!trimmed) {
+    return [createDefaultCompositeFieldValues(type)];
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+
+    if (Array.isArray(parsed)) {
+      if (parsed.length === 0) {
+        return [createDefaultCompositeFieldValues(type)];
+      }
+
+      return parsed.map((layer) =>
+        layer && typeof layer === "object" && !Array.isArray(layer)
+          ? objectToCompositeFieldValues(type, layer as Record<string, unknown>)
+          : createDefaultCompositeFieldValues(type),
+      );
+    }
+
+    if (parsed && typeof parsed === "object") {
+      return [objectToCompositeFieldValues(type, parsed as Record<string, unknown>)];
+    }
+  } catch {
+    return [createDefaultCompositeFieldValues(type)];
+  }
+
+  return [createDefaultCompositeFieldValues(type)];
+}
+
+export function serializeShadowLayerValues(
+  type: string,
+  layers: Array<Record<string, string>>,
+) {
+  return JSON.stringify(
+    layers.map((layer) => serializeShadowLayerObject(type, layer)),
+    null,
+    2,
+  );
 }
 
 export function tryParseJsonValue(rawValue: string) {

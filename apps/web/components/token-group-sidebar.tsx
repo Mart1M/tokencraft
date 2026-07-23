@@ -1,14 +1,17 @@
 "use client";
 
+import { Search } from "lucide-react";
 import { useMemo, useState, type PointerEvent } from "react";
 
 import { useTokenExplorer } from "@/components/token-explorer-provider";
+import { Input } from "@/components/ui/input";
 import { TreeView, type TreeDataItem } from "@/components/ui/tree-view";
 import { cn } from "@/lib/utils";
 import type { ImportedTokenRow } from "@/lib/tokens/entries";
 import {
   buildTokenTree,
   getTokenGroupSegments,
+  tokenMatchesSearch,
   type TokenTreeNode,
 } from "@/lib/tokens/token-tree";
 
@@ -17,6 +20,8 @@ export function TokenGroupSidebar({ tokens }: { tokens: ImportedTokenRow[] }) {
     selectedCollectionId,
     selectedGroupSegments,
     setSelectedGroupSegments,
+    tokenSearchQuery,
+    setTokenSearchQuery,
   } = useTokenExplorer();
   const [sidebarWidth, setSidebarWidth] = useState(224);
 
@@ -25,17 +30,26 @@ export function TokenGroupSidebar({ tokens }: { tokens: ImportedTokenRow[] }) {
     [tokens, selectedCollectionId],
   );
 
-  const tree = useMemo(
-    () => buildTokenTree(collectionTokens),
-    [collectionTokens],
-  );
+  const isSearching = tokenSearchQuery.trim().length > 0;
+
+  const filteredTokens = useMemo(() => {
+    if (!isSearching) {
+      return collectionTokens;
+    }
+
+    return collectionTokens.filter((token) =>
+      tokenMatchesSearch(token, tokenSearchQuery),
+    );
+  }, [collectionTokens, isSearching, tokenSearchQuery]);
+
+  const tree = useMemo(() => buildTokenTree(filteredTokens), [filteredTokens]);
 
   const ungroupedCount = useMemo(
     () =>
-      collectionTokens.filter(
+      filteredTokens.filter(
         (token) => getTokenGroupSegments(token.name).length === 0,
       ).length,
-    [collectionTokens],
+    [filteredTokens],
   );
 
   const treeData = useMemo<TreeDataItem<TokenTreeNode>[]>(
@@ -82,7 +96,19 @@ export function TokenGroupSidebar({ tokens }: { tokens: ImportedTokenRow[] }) {
       className="app-sidebar relative sticky top-0 z-10 h-screen shrink-0 overflow-y-auto overflow-x-hidden border-r border-sidebar-border bg-sidebar text-sidebar-foreground"
       style={{ width: sidebarWidth }}
     >
-      <div className="p-3 w-full" style={{ padding: 12 }}>
+      <div className="flex w-full flex-col p-3" style={{ padding: 12 }}>
+        <div className="relative mb-2">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Search tokens…"
+            value={tokenSearchQuery}
+            onChange={(event) => setTokenSearchQuery(event.target.value)}
+            className="h-8 w-full min-w-0 pl-8"
+            style={{ paddingLeft: 34 }}
+            aria-label="Search tokens"
+          />
+        </div>
+
         <div className="flex flex-col" style={{ gap: 1 }}>
           <button
             type="button"
@@ -96,22 +122,27 @@ export function TokenGroupSidebar({ tokens }: { tokens: ImportedTokenRow[] }) {
           >
             <span className="truncate">All tokens</span>
             <span className="ml-auto shrink-0 text-xs text-sidebar-foreground/55">
-              {collectionTokens.length}
+              {filteredTokens.length}
             </span>
           </button>
 
-          <TreeView
-            data={treeData}
-            selectedItemId={selectedGroupSegments?.join("/")}
-            renderItem={({ item }) => (
-              <>
-                <span className="truncate">{item.name}</span>
-                <span className="ml-auto shrink-0 text-xs text-sidebar-foreground/55">
-                  {item.value?.tokenCount}
-                </span>
-              </>
-            )}
-          />
+          {treeData.length > 0 ? (
+            <TreeView
+              data={treeData}
+              selectedItemId={selectedGroupSegments?.join("/")}
+              expandAll={isSearching}
+              renderItem={({ item }) => (
+                <>
+                  <span className="truncate">{item.name}</span>
+                  <span className="ml-auto shrink-0 text-xs text-sidebar-foreground/55">
+                    {item.value?.tokenCount}
+                  </span>
+                </>
+              )}
+            />
+          ) : isSearching ? (
+            <p className="px-2 py-3 text-xs text-muted-foreground">No matching tokens.</p>
+          ) : null}
 
           {ungroupedCount > 0 ? (
             <button

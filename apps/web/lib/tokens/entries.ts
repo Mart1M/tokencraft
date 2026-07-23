@@ -52,6 +52,8 @@ export type TokenSidebarCollection = {
   modes: string[];
   path: string;
   modeStorage?: import("@tokencraft/core").ModeStorage;
+  /** Mode name → relative file path when using separate-files storage. */
+  modeFiles?: Record<string, string>;
   pendingDelete?: boolean;
 };
 
@@ -85,10 +87,12 @@ function formatCollectionPath(file: LocalTokenFile) {
 
     if (directories.size === 1) {
       const directory = [...directories][0];
-      return directory === "." ? `${paths.length} mode files` : `${directory}/ (${paths.length} modes)`;
+      // Use the shared folder as the collection path so the tree shows a
+      // single leaf (e.g. "legacy") under the parent, not a nested folder.
+      return directory === "." ? paths[0] : directory;
     }
 
-    return `${paths.length} mode files`;
+    return paths[0];
   }
 
   return file.path;
@@ -109,6 +113,7 @@ export function getTokenSidebarCollections(
       modes: modes.length > 0 ? modes : ["Default"],
       path: formatCollectionPath(file),
       ...(file.modeStorage ? { modeStorage: file.modeStorage } : {}),
+      ...(file.modeFiles ? { modeFiles: file.modeFiles } : {}),
       ...(pendingCollectionDeletes.includes(file.id) ? { pendingDelete: true } : {}),
     };
   });

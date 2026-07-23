@@ -22,6 +22,7 @@ import { flattenTokenEntries, type TokenFileMetadata } from "@/lib/tokens/flatte
 import { buildJsonFromMetadata } from "@/lib/tokens/json-patch";
 import {
   bindModesToFiles,
+  detectSeparateModeGroups,
   mergeSeparateModeFiles,
   splitMetadataForModeFiles,
 } from "@/lib/tokens/mode-storage";
@@ -451,7 +452,7 @@ export async function readWorkspaceTokenFiles(rootPath: string): Promise<LocalTo
     }
   }
 
-  if (modeStorage !== "separate-files" || !config?.fileCollections) {
+  if (modeStorage !== "separate-files") {
     return files.sort((left, right) => left.path.localeCompare(right.path));
   }
 
@@ -460,12 +461,13 @@ export async function readWorkspaceTokenFiles(rootPath: string): Promise<LocalTo
 
 function mergeTokenFilesByCollection(
   files: LocalTokenFile[],
-  config: ParsedWorkspaceConfig
+  config: ParsedWorkspaceConfig | null
 ): LocalTokenFile[] {
   const filesByPath = new Map(files.map((file) => [file.path, file]));
   const grouped = new Map<string, { modes?: string[]; paths: string[] }>();
+  const consumedPaths = new Set<string>();
 
-  for (const [filePath, collection] of Object.entries(config.fileCollections ?? {})) {
+  for (const [filePath, collection] of Object.entries(config?.fileCollections ?? {})) {
     const existing = grouped.get(collection.name) ?? {
       modes: collection.modes,
       paths: [],
@@ -480,7 +482,6 @@ function mergeTokenFilesByCollection(
   }
 
   const merged: LocalTokenFile[] = [];
-  const consumedPaths = new Set<string>();
 
   for (const [collectionName, group] of [...grouped.entries()].sort(([left], [right]) =>
     left.localeCompare(right)
@@ -516,6 +517,39 @@ function mergeTokenFilesByCollection(
     );
   }
 
+  const remaining = files.filter((file) => !consumedPaths.has(file.path));
+  const detectedGroups = detectSeparateModeGroups(
+    remaining.map((file) => ({
+      path: file.path,
+      tokenPaths: file.metadata.tokens.map((token) => token.path),
+    }))
+  );
+
+  for (const group of detectedGroups) {
+    const modeFiles = group.paths
+      .map((filePath, index) => {
+        const file = filesByPath.get(filePath);
+        return file ? { mode: group.modes[index], file } : null;
+      })
+      .filter((entry): entry is { mode: string; file: LocalTokenFile } => entry !== null);
+
+    if (modeFiles.length < 2) {
+      continue;
+    }
+
+    for (const filePath of group.paths) {
+      consumedPaths.add(filePath);
+    }
+
+    merged.push(
+      mergeSeparateModeFiles({
+        collectionName: group.collectionName,
+        modeFiles,
+        modeStorage: "separate-files",
+      })
+    );
+  }
+
   for (const file of files) {
     if (!consumedPaths.has(file.path)) {
       merged.push(file);
@@ -523,6 +557,26 @@ function mergeTokenFilesByCollection(
   }
 
   return merged.sort((left, right) => left.collectionName.localeCompare(right.collectionName));
+}
+
+export async function writeWorkspaceRawFiles(
+  rootPath: string,
+  files: Array<{ path: string; content: string }>,
+): Promise<{ savedFileCount: number }> {
+  if (files.length === 0) {
+    return { savedFileCount: 0 };
+  }
+
+  let savedFileCount = 0;
+
+  for (const file of files) {
+    const absolutePath = toAbsolutePath(rootPath, file.path);
+    await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+    await writeFileAtomic(absolutePath, file.content, "utf8");
+    savedFileCount += 1;
+  }
+
+  return { savedFileCount };
 }
 
 export async function writeWorkspaceTokenDrafts(

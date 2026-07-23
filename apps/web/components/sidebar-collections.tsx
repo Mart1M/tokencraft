@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import {
-  BookText,
+  Diamond,
   Folder,
   FolderPlus,
   Pencil,
@@ -483,7 +483,7 @@ export function SidebarCollections({
             renderItem={({ item }) =>
               item.value?.collection ? (
                 <>
-                  <BookText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <Diamond className="h-4 w-4 shrink-0 text-muted-foreground" />
                   <span className="truncate">{item.name}</span>
                 </>
               ) : (

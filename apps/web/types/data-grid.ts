@@ -137,6 +137,8 @@ declare module "@tanstack/react-table" {
     readOnly?: boolean;
     selectedTokenId?: string | null;
     onTokenRowActivate?: (rowId: string) => void;
+    /** Effective token rows used to resolve multi-level alias tooltips. */
+    dependencyRows?: import("@/lib/tokens/entries").ImportedTokenRow[];
     selectionMode?: "cell" | "row";
   }
 }

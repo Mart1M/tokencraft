@@ -13,6 +13,7 @@ import {
 } from "@/lib/tokens/fs";
 import {
   bindModesToFiles,
+  detectSeparateModeGroups,
   mergeSeparateModeFiles,
   splitMetadataForModeFiles,
   suggestModeFilePath,
@@ -34,6 +35,39 @@ describe("mode storage helpers", () => {
     ).toEqual([
       { mode: "light", path: "tokens/light.tokens.json" },
       { mode: "dark", path: "tokens/dark.tokens.json" },
+    ]);
+  });
+
+  it("detects sibling files with shared token paths as modes", () => {
+    expect(
+      detectSeparateModeGroups([
+        {
+          path: "semantic/legacy/light.json",
+          tokenPaths: ["color.bg", "color.fg", "space.1"],
+        },
+        {
+          path: "semantic/legacy/dark.json",
+          tokenPaths: ["color.bg", "color.fg", "space.1"],
+        },
+        {
+          path: "component/button/web.json",
+          tokenPaths: ["vp.web.button.label"],
+        },
+        {
+          path: "component/button/android.json",
+          tokenPaths: ["vp.android.button.label"],
+        },
+        {
+          path: "core/core.json",
+          tokenPaths: ["color.blue.500"],
+        },
+      ])
+    ).toEqual([
+      {
+        collectionName: "semantic / legacy",
+        modes: ["light", "dark"],
+        paths: ["semantic/legacy/light.json", "semantic/legacy/dark.json"],
+      },
     ]);
   });
 
@@ -102,6 +136,76 @@ describe("mode storage helpers", () => {
       light: expect.objectContaining({ text: "#ffffff" }),
       dark: expect.objectContaining({ text: "#111111" }),
     });
+  });
+
+  it("preserves boxShadow layer arrays when merging separate mode files", () => {
+    const layer = {
+      blur: "0",
+      color: "{vp.core.color.white}",
+      spread: "4",
+      type: "dropShadow",
+      x: "0",
+      y: "0",
+    };
+
+    const merged = mergeSeparateModeFiles({
+      collectionName: "Elevation",
+      modeStorage: "separate-files",
+      modeFiles: [
+        {
+          mode: "light",
+          file: {
+            path: "tokens/elevation/light.json",
+            format: "custom",
+            metadata: {
+              topLevelKeys: ["shadow"],
+              tokens: [
+                {
+                  path: "shadow.focus",
+                  type: "boxShadow",
+                  value: "0 0 0 4 {vp.core.color.white}",
+                  raw: [layer],
+                  display: {
+                    kind: "composite",
+                    text: "0 0 0 4 {vp.core.color.white}",
+                  },
+                },
+              ],
+            },
+          },
+        },
+        {
+          mode: "dark",
+          file: {
+            path: "tokens/elevation/dark.json",
+            format: "custom",
+            metadata: {
+              topLevelKeys: ["shadow"],
+              tokens: [
+                {
+                  path: "shadow.focus",
+                  type: "boxShadow",
+                  value: "0 0 0 4 {vp.core.color.black}",
+                  raw: [{ ...layer, color: "{vp.core.color.black}" }],
+                  display: {
+                    kind: "composite",
+                    text: "0 0 0 4 {vp.core.color.black}",
+                  },
+                },
+              ],
+            },
+          },
+        },
+      ],
+    });
+
+    expect(merged.metadata.tokens[0]?.raw).toEqual({
+      light: [layer],
+      dark: [{ ...layer, color: "{vp.core.color.black}" }],
+    });
+    expect(merged.metadata.tokens[0]?.modes?.light?.text).toContain(
+      "{vp.core.color.white}",
+    );
   });
 
   it("splits merged metadata back into scalar mode files", () => {
@@ -225,6 +329,66 @@ describe("separate-files workspace mode storage", () => {
     expect(files).toHaveLength(1);
     expect(files[0]?.collectionName).toBe("Semantic");
     expect(files[0]?.configuredModes).toEqual(["light", "dark"]);
+    expect(files[0]?.metadata.tokens[0]?.modes).toMatchObject({
+      light: expect.objectContaining({ text: "#ffffff" }),
+      dark: expect.objectContaining({ text: "#111111" }),
+    });
+  });
+
+  it("auto-detects sibling mode files from a flat files list", async () => {
+    await mkdir(join(rootPath, "semantic/legacy"), { recursive: true });
+    await writeFile(
+      join(rootPath, "semantic/legacy/light.json"),
+      `${JSON.stringify(
+        {
+          color: {
+            bg: { type: "color", value: "#ffffff" },
+          },
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+    await writeFile(
+      join(rootPath, "semantic/legacy/dark.json"),
+      `${JSON.stringify(
+        {
+          color: {
+            bg: { type: "color", value: "#111111" },
+          },
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+    await writeFile(
+      join(rootPath, TOKENCRAFT_CONFIG_FILENAME),
+      `${JSON.stringify(
+        {
+          version: 1,
+          modeStorage: "separate-files",
+          files: [
+            "semantic/legacy/dark.json",
+            "semantic/legacy/light.json",
+          ],
+        },
+        null,
+        2
+      )}\n`,
+      "utf8"
+    );
+
+    const files = await readWorkspaceTokenFiles(rootPath);
+
+    expect(files).toHaveLength(1);
+    expect(files[0]?.collectionName).toBe("semantic / legacy");
+    expect(files[0]?.configuredModes).toEqual(["light", "dark"]);
+    expect(files[0]?.modeFiles).toEqual({
+      light: "semantic/legacy/light.json",
+      dark: "semantic/legacy/dark.json",
+    });
     expect(files[0]?.metadata.tokens[0]?.modes).toMatchObject({
       light: expect.objectContaining({ text: "#ffffff" }),
       dark: expect.objectContaining({ text: "#111111" }),

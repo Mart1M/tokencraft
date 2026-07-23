@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -115,9 +115,12 @@ function TreeItem<T>({
         {hasChildren ? (
           <button
             type="button"
-            onClick={() => toggleExpanded(item.id)}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleExpanded(item.id);
+            }}
             aria-label={isOpen ? "Collapse" : "Expand"}
-            className="flex h-6 w-6 shrink-0 items-center justify-center text-muted-foreground"
+            className="flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
           >
             <ChevronRight
               className={cn(
@@ -126,9 +129,7 @@ function TreeItem<T>({
               )}
             />
           </button>
-        ) : (
-          <span className="h-6 w-6 shrink-0" aria-hidden />
-        )}
+        ) : null}
         <button
           type="button"
           title={item.title ?? item.name}
@@ -176,26 +177,45 @@ export function TreeView<T>({
   renderItem,
 }: TreeViewProps<T>) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  // User collapses win over auto-expanding ancestors of the selection.
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
+
   const selectedAncestors = useMemo(
     () => (selectedItemId ? collectAncestorIds(data, selectedItemId) : null),
     [data, selectedItemId],
   );
 
-  const visibleExpandedIds = useMemo(
-    () => new Set([...expandedIds, ...(selectedAncestors ?? [])]),
-    [expandedIds, selectedAncestors],
-  );
+  useEffect(() => {
+    setCollapsedIds(new Set());
+  }, [selectedItemId]);
+
+  const visibleExpandedIds = useMemo(() => {
+    const next = new Set([...expandedIds, ...(selectedAncestors ?? [])]);
+    for (const id of collapsedIds) {
+      next.delete(id);
+    }
+    return next;
+  }, [expandedIds, selectedAncestors, collapsedIds]);
 
   function toggleExpanded(id: string) {
-    setExpandedIds((current) => {
-      const next = new Set(current);
-      if (next.has(id)) {
+    const isOpen = visibleExpandedIds.has(id);
+
+    if (isOpen) {
+      setCollapsedIds((current) => new Set(current).add(id));
+      setExpandedIds((current) => {
+        const next = new Set(current);
         next.delete(id);
-      } else {
-        next.add(id);
-      }
+        return next;
+      });
+      return;
+    }
+
+    setCollapsedIds((current) => {
+      const next = new Set(current);
+      next.delete(id);
       return next;
     });
+    setExpandedIds((current) => new Set(current).add(id));
   }
 
   return (

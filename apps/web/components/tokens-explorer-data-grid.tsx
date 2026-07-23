@@ -24,14 +24,15 @@ function toGridRow(
   token: ImportedTokenRow,
   effectiveRows: ImportedTokenRow[],
   drafts: ReturnType<typeof useTokenDraftStore.getState>["drafts"],
-  availableModes: string[]
+  availableModes: string[],
+  resolveModeDataKey: (mode: string) => string = (mode) => mode
 ): TokenGridRow {
   const tokenDrafts = getDraftsForToken(drafts, token.id);
   const effectiveRow = effectiveRows.find((row) => row.id === token.id) ?? token;
   const modeValues = Object.fromEntries(
     availableModes.map((mode) => [
       mode,
-      getRowModeDisplayValue(effectiveRow, mode),
+      getRowModeDisplayValue(effectiveRow, resolveModeDataKey(mode)),
     ]),
   );
   const draftStatus = tokenDrafts.some((draft) => draft.operation === "create")
@@ -49,7 +50,11 @@ function toGridRow(
       availableModes.map((mode) => [
         mode,
         effectiveRow.type === "color"
-          ? resolveColorModifierPreview(effectiveRows, effectiveRow, mode).color
+          ? resolveColorModifierPreview(
+              effectiveRows,
+              effectiveRow,
+              resolveModeDataKey(mode)
+            ).color
           : undefined,
       ]),
     ),
@@ -60,6 +65,7 @@ function toGridRow(
 
 export function TokensExplorerDataGrid({
   rows,
+  dependencyTokens,
   availableModes,
   drafts,
   selectedTokenId,
@@ -69,8 +75,11 @@ export function TokensExplorerDataGrid({
   onRenameMode,
   onDeleteMode,
   canDeleteMode = true,
+  resolveModeDataKey,
 }: {
   rows: ImportedTokenRow[];
+  /** Full workspace tokens for cross-collection alias resolution in tooltips. */
+  dependencyTokens?: ImportedTokenRow[];
   availableModes: string[];
   drafts: ReturnType<typeof useTokenDraftStore.getState>["drafts"];
   selectedTokenId: string | null;
@@ -80,16 +89,28 @@ export function TokensExplorerDataGrid({
   onRenameMode?: (mode: string, newName: string) => Promise<boolean>;
   onDeleteMode?: (mode: string) => Promise<boolean>;
   canDeleteMode?: boolean;
+  resolveModeDataKey?: (mode: string) => string;
 }) {
+  const resolveDataKey = useCallback(
+    (mode: string) => (resolveModeDataKey ? resolveModeDataKey(mode) : mode),
+    [resolveModeDataKey]
+  );
+
   const gridData = useMemo(
     () => {
-      const effectiveRows = rows.map((token) =>
+      const dependencySource = dependencyTokens ?? rows;
+      const dependencyRows = dependencySource.map((token) =>
         getEffectiveTokenRow(token, getDraftsForToken(drafts, token.id)),
       );
 
-      return rows.map((token) => toGridRow(token, effectiveRows, drafts, availableModes));
+      return {
+        rows: rows.map((token) =>
+          toGridRow(token, dependencyRows, drafts, availableModes, resolveDataKey)
+        ),
+        dependencyRows,
+      };
     },
-    [rows, drafts, availableModes],
+    [rows, dependencyTokens, drafts, availableModes, resolveDataKey],
   );
 
   const columns = useMemo<ColumnDef<TokenGridRow>[]>(
@@ -175,12 +196,13 @@ export function TokensExplorerDataGrid({
       selectedTokenId,
       onTokenRowActivate: handleTokenRowActivate,
       draftsRevision,
+      dependencyRows: gridData.dependencyRows,
     }),
-    [selectedTokenId, handleTokenRowActivate, draftsRevision],
+    [selectedTokenId, handleTokenRowActivate, draftsRevision, gridData.dependencyRows],
   );
 
   const { table, ...dataGridProps } = useDataGrid({
-    data: gridData,
+    data: gridData.rows,
     columns,
     readOnly: true,
     selectionMode: "row",

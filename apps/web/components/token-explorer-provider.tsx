@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { getDefaultMode } from "@/lib/tokens/display";
+import { modesEqual } from "@/lib/tokens/mode-changes";
 import { useTokenDraftStore } from "@/lib/tokens/draft-store";
 import type { TokenSidebarCollection } from "@/lib/tokens/entries";
 
@@ -22,6 +23,8 @@ type TokenExplorerContextValue = {
   setSelectedCollectionId: (id: string | null) => void;
   selectedGroupSegments: string[] | null;
   setSelectedGroupSegments: (segments: string[] | null) => void;
+  tokenSearchQuery: string;
+  setTokenSearchQuery: (query: string) => void;
   addMode: (mode: string) => void;
   renameCollectionMode: (oldMode: string, newMode: string) => void;
   deleteCollectionMode: (mode: string) => void;
@@ -70,10 +73,10 @@ export function TokenExplorerProvider({
     () => collections[0]?.id ?? null
   );
   const [selectedGroupSegments, setSelectedGroupSegments] = useState<string[] | null>(null);
-  // Modes a user has added in this session but hasn't saved a token value for
-  // yet, so they aren't derivable from `collections[].modes`. Keyed by
-  // collection id since modes are per-collection.
-  const [manualModesByCollection, setManualModesByCollection] = useState<
+  const [tokenSearchQuery, setTokenSearchQuery] = useState("");
+  // Full per-collection mode list while local add/rename/delete is staged but
+  // collections from the server have not caught up yet.
+  const [modeOverridesByCollection, setModeOverridesByCollection] = useState<
     Record<string, string[]>
   >({});
   const [activeMode, setActiveMode] = useState<string | null>(() =>
@@ -87,6 +90,7 @@ export function TokenExplorerProvider({
     () => (id: string | null) => {
       setSelectedCollectionIdState(id);
       setSelectedGroupSegments(null);
+      setTokenSearchQuery("");
     },
     []
   );
@@ -107,14 +111,37 @@ export function TokenExplorerProvider({
     });
   }, [collections, fallbackModes]);
 
-  const availableModes = useMemo(() => {
-    const base = getCollectionModes(collections, selectedCollectionId, fallbackModes);
-    const manual = selectedCollectionId
-      ? (manualModesByCollection[selectedCollectionId] ?? [])
-      : [];
+  useEffect(() => {
+    setModeOverridesByCollection((current) => {
+      let changed = false;
+      const next = { ...current };
 
-    return manual.length === 0 ? base : Array.from(new Set([...base, ...manual]));
-  }, [collections, selectedCollectionId, fallbackModes, manualModesByCollection]);
+      for (const [collectionId, override] of Object.entries(current)) {
+        const collection = collections.find((candidate) => candidate.id === collectionId);
+
+        if (!collection) {
+          delete next[collectionId];
+          changed = true;
+          continue;
+        }
+
+        if (modesEqual(override, collection.modes)) {
+          delete next[collectionId];
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [collections]);
+
+  const availableModes = useMemo(() => {
+    if (selectedCollectionId && modeOverridesByCollection[selectedCollectionId]) {
+      return modeOverridesByCollection[selectedCollectionId];
+    }
+
+    return getCollectionModes(collections, selectedCollectionId, fallbackModes);
+  }, [collections, selectedCollectionId, fallbackModes, modeOverridesByCollection]);
 
   useEffect(() => {
     setActiveMode((current) => {
@@ -138,30 +165,35 @@ export function TokenExplorerProvider({
         return;
       }
 
-      setManualModesByCollection((current) => {
-        const existing = current[selectedCollectionId] ?? [];
-
-        if (existing.includes(trimmed)) {
-          return current;
-        }
-
-        return { ...current, [selectedCollectionId]: [...existing, trimmed] };
-      });
       const baseModes = getCollectionModes(collections, selectedCollectionId, fallbackModes);
-      const manualModes = manualModesByCollection[selectedCollectionId] ?? [];
-      const modes = Array.from(new Set([...baseModes, ...manualModes]));
+      const currentModes = modeOverridesByCollection[selectedCollectionId] ?? baseModes;
 
-      if (!modes.includes(trimmed)) {
-        stageModeChange({
-          fileId: selectedCollectionId,
-          action: "add",
-          mode: trimmed,
-          modes,
-        });
+      if (currentModes.includes(trimmed)) {
+        setActiveMode(trimmed);
+        return;
       }
+
+      const nextModes = [...currentModes, trimmed];
+
+      setModeOverridesByCollection((current) => ({
+        ...current,
+        [selectedCollectionId]: nextModes,
+      }));
+      stageModeChange({
+        fileId: selectedCollectionId,
+        action: "add",
+        mode: trimmed,
+        modes: currentModes,
+      });
       setActiveMode(trimmed);
     },
-    [collections, fallbackModes, manualModesByCollection, selectedCollectionId, stageModeChange]
+    [
+      collections,
+      fallbackModes,
+      modeOverridesByCollection,
+      selectedCollectionId,
+      stageModeChange,
+    ]
   );
 
   const renameCollectionMode = useMemo(
@@ -172,16 +204,18 @@ export function TokenExplorerProvider({
         return;
       }
 
-      setManualModesByCollection((current) => {
-        const existing = current[selectedCollectionId];
+      const baseModes = getCollectionModes(collections, selectedCollectionId, fallbackModes);
 
-        if (!existing?.includes(oldMode)) {
+      setModeOverridesByCollection((current) => {
+        const source = current[selectedCollectionId] ?? baseModes;
+
+        if (!source.includes(oldMode)) {
           return current;
         }
 
         return {
           ...current,
-          [selectedCollectionId]: existing.map((mode) =>
+          [selectedCollectionId]: source.map((mode) =>
             mode === oldMode ? trimmedNew : mode
           ),
         };
@@ -189,7 +223,7 @@ export function TokenExplorerProvider({
 
       setActiveMode((current) => (current === oldMode ? trimmedNew : current));
     },
-    [selectedCollectionId]
+    [collections, fallbackModes, selectedCollectionId]
   );
 
   const deleteCollectionMode = useMemo(
@@ -198,22 +232,24 @@ export function TokenExplorerProvider({
         return;
       }
 
-      setManualModesByCollection((current) => {
-        const existing = current[selectedCollectionId];
+      const baseModes = getCollectionModes(collections, selectedCollectionId, fallbackModes);
 
-        if (!existing?.includes(mode)) {
+      setModeOverridesByCollection((current) => {
+        const source = current[selectedCollectionId] ?? baseModes;
+
+        if (!source.includes(mode)) {
           return current;
         }
 
         return {
           ...current,
-          [selectedCollectionId]: existing.filter((currentMode) => currentMode !== mode),
+          [selectedCollectionId]: source.filter((currentMode) => currentMode !== mode),
         };
       });
 
       setActiveMode((current) => (current === mode ? null : current));
     },
-    [selectedCollectionId]
+    [collections, fallbackModes, selectedCollectionId]
   );
 
   const resolvedMode = activeMode ?? getDefaultMode(availableModes);
@@ -228,6 +264,8 @@ export function TokenExplorerProvider({
       setSelectedCollectionId,
       selectedGroupSegments,
       setSelectedGroupSegments,
+      tokenSearchQuery,
+      setTokenSearchQuery,
       addMode,
       renameCollectionMode,
       deleteCollectionMode,
@@ -237,8 +275,8 @@ export function TokenExplorerProvider({
       availableModes,
       resolvedMode,
       selectedCollectionId,
-      setSelectedCollectionId,
       selectedGroupSegments,
+      tokenSearchQuery,
       addMode,
       renameCollectionMode,
       deleteCollectionMode,
